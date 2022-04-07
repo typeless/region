@@ -1,0 +1,17 @@
+lib heap =
+	heap.myr
+;;
+
+lib sbrkheap =
+	sbrk.myr
+;;
+
+lib bumpheap =
+	bump.myr
+;;
+
+testdeps =
+	heap
+	sbrkheap
+	bumpheap
+;;

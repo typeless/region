@@ -1,0 +1,33 @@
+use sys // this is actually used by sbrk.myr
+use std
+use heap
+use sbrkheap
+use bumpheap
+
+type foo = struct
+	data : byte[20]
+	len  : std.size
+;;
+
+var m : bumpheap.allocator(sbrkheap.allocator(void))
+
+const __init__ = {
+	//m = sbrkheap.mk()
+	m = bumpheap.mk()
+}
+
+impl heap.op foo =
+	alloc = {; -> heap.get(m)}
+	free = {p; heap.put(m, p)}
+;;
+
+const main = {
+	var x : foo#
+
+	x = heap.alloc()
+
+	x.data[0] = 100
+	x.data[1] = 122
+	x.len = 123
+	std.put("{}, {}\n", x.data, x.len)
+}

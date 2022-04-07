@@ -1,0 +1,34 @@
+use sys
+use "heap"
+
+pkg sbrkheap =
+	type allocator(@s)
+	generic mk : (-> allocator(@a)) :: heap.layer @a
+	impl heap.layer allocator(@s) -> @b#
+;;
+
+type allocator(@s) = struct
+	s	: @s
+	cur	: void#
+	count	: sys.size
+;;
+
+generic mk = {-> allocator(@a)
+	var cur = sys.brk(0)
+	var a = [ .cur = (cur : void#), .count = 0 ]
+	-> a
+}
+
+impl heap.layer allocator(@s) -> @b# =
+	get = {a
+		var next = (a.cur : sys.intptr) + (sizeof(@b) : sys.intptr)
+		if sys.brk((next : uint64)) == (next : int64)
+			var p = a.cur
+			a.cur = (next : void#)
+			a.count += sizeof(@b)
+			-> (p : @b#)
+		;;
+		-> (0 : @b#)
+	}
+	put = {a, p;}
+;;
