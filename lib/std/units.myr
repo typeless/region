@@ -1,0 +1,17 @@
+use "types"
+
+pkg std =
+	/* JEDEC 100B.1 memory sizes */
+	generic KiB	: @a	= 1024 		:: integral,numeric @a
+	generic MiB	: @a	= KiB*1024      :: integral,numeric @a
+	generic GiB	: @a	= MiB*1024      :: integral,numeric @a
+	generic TiB	: @a	= GiB*1024      :: integral,numeric @a
+	generic PiB	: @a	= TiB*1024      :: integral,numeric @a
+	generic EiB	: @a	= PiB*1024      :: integral,numeric @a
+	generic ZiB	: @a	= EiB*1024      :: integral,numeric @a
+	generic YiB	: @a	= ZiB*1024      :: integral,numeric @a
+
+	generic Sec	: time	= 1_000_000
+	generic Msec	: time	= 1_000
+	generic Usec	: time	= 1
+;;

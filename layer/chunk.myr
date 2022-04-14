@@ -1,0 +1,62 @@
+use sys
+use region
+
+pkg layer =
+	type chunk(@s, @size) :: region.layer @s
+	impl region.layer chunk(@s, @size) :: region.layer @s
+;;
+
+type chunk(@s, @size) :: region.layer @s = struct
+	super	: @s
+	buf	: byte#
+	eob	: byte#
+;;
+
+impl region.layer chunk(@s, @size) :: region.layer @s =
+	init = {
+		var a : chunk(@s, @size)
+		a.super = region.init()
+		a.buf = (0 : byte#)
+		a.eob = (0 : byte#)
+		-> a
+	}
+	deinit = {a
+		region.deinit(&a.super)
+	}
+	get = {a, sz
+		generic Align = 16 //FIXME: parameterization?
+
+		var p
+
+		sz = (sz + (Align - 1)) & ~(Align - 1)
+
+		p = a.buf
+		a.buf = (((a.buf : sys.intptr) + (sz : sys.intptr)) : byte#)
+		if a.buf <= a.eob
+			-> p
+		;;
+		a.buf = (((a.buf : sys.intptr) - (sz : sys.intptr)) : byte#)
+
+		-> layer.grow(a, sz)
+	}
+	put = {a, p, sz;}
+;;
+
+generic grow = {a : chunk(@s, @size)#, sz : sys.size -> byte#
+	const chunksz = sizeof(@size)
+	var xsz = (((sz - 1) / chunksz + 1) * chunksz : sys.size)
+	var p : byte#
+	p = region.get(&a.super, (xsz : sys.size))
+	if p == (0 : byte#)
+		-> (0 : byte#)
+	;;
+	if a.eob != p
+		a.buf = p
+	else
+		xsz = xsz + ((a.eob : sys.size) - (a.buf : sys.size))
+	;;
+	a.eob = ((a.buf : sys.intptr) + (xsz : sys.intptr) : byte#)
+	p = a.buf
+	a.buf = ((a.buf : sys.intptr) + (sz : sys.intptr) : byte#)
+	-> p
+}

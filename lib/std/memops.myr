@@ -1,0 +1,8 @@
+use "types"
+
+pkg std =
+	extern const memblit	: (dst : byte#, src : byte#, len : std.size -> void)
+	extern const memfill	: (dst : byte#, val : byte, len : std.size -> void)
+	extern const memeq	: (a : byte#, b : byte#, len : std.size -> bool)
+;;
+

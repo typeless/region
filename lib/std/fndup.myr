@@ -1,0 +1,59 @@
+use "alloc"
+use "die"
+use "sldup"
+use "slcp"
+use "types"
+
+pkg std =
+	generic fnenvsz	: (fn : @fn -> size)	:: function @fn
+	generic fndup	: (fn : @fn -> @fn)	:: function @fn
+	generic fnbdup	: (fn : @fn, buf : byte[:] -> @fn)	:: function @fn
+	generic fnfree	: (fn : @fn -> void)	:: function @fn
+;;
+
+generic fndup = {fn
+	var sl
+
+	sl = std.slalloc(fnenvsz(fn))
+	-> fnbdup(fn, sl)
+}
+
+generic fnenvsz = {fn
+	var repr : intptr[2]
+
+	repr = (&fn : intptr[2]#)#
+	-> envslice(repr[0]).len
+}
+
+extern const put : (fmt : byte[:], args : ... -> int64)
+
+generic fnbdup = {fn : @fn, buf	:: function @fn
+	var repr : intptr[2]
+	var env
+
+	repr = (&fn : intptr[2]#)#
+	env = envslice(repr[0])
+	slcp(buf[:env.len], env)
+	repr[0] = (buf : intptr)
+	-> (&repr : @fn#)#
+}
+
+generic fnfree = {fn
+	var repr : intptr[2]
+
+	repr = (&fn : intptr[2]#)#
+	std.slfree(envslice(repr[0]))
+}
+
+const envslice = {ep : intptr
+	var env : byte#
+	var szp : intptr#
+
+	if ep == 0
+		-> [][:]
+	;;
+	env = (ep : byte#)
+	szp = (env : intptr#)
+	-> env[:szp#]
+}
+

@@ -1,17 +1,17 @@
-lib heap =
-	heap.myr
-;;
-
-lib sbrkheap =
-	sbrk.myr
-;;
-
-lib bumpheap =
-	bump.myr
+lib region =
+	region.myr
 ;;
 
 testdeps =
-	heap
-	sbrkheap
-	bumpheap
+	# FIXME orders matter !?
+	layer:layer
+	lib/std:std
+	@/:region
+;;
+
+sub =
+	layer
+	lib
+	bench
+	examples
 ;;

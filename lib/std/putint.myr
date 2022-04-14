@@ -1,0 +1,56 @@
+use "die"
+use "memops"
+use "types"
+
+pkg std =
+	generic puthost64	: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putle64		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putbe64		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic puthost32	: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putle32		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putbe32		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic puthost16	: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putle16		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putbe16		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic puthost8	: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putle8		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+	generic putbe8		: (buf : byte[:], v :  @a -> size) :: numeric,integral @a
+;;
+
+generic puthost = {buf, val : @a :: integral, numeric @a
+	iassert(buf.len >= sizeof(@a), "buffer too small")
+	memblit((buf : byte#), (&val : byte#), sizeof(@a))
+	-> sizeof(@a)
+}
+
+generic puthost64	= {buf, v;	-> puthost(buf, (v : uint64))}
+generic putle64		= {buf, v;	-> putle(buf, (v : uint64), 8)}
+generic putbe64		= {buf, v;	-> putbe(buf, (v : uint64), 8)}
+generic puthost32	= {buf, v;	-> puthost(buf, (v : uint32))}
+generic putle32		= {buf, v;	-> putle(buf, (v : uint64), 4)}
+generic putbe32		= {buf, v;	-> putbe(buf, (v : uint64), 4)}
+generic puthost16	= {buf, v;	-> puthost(buf, (v : uint16))}
+generic putle16		= {buf, v;	-> putle(buf, (v : uint64), 2)}
+generic putbe16		= {buf, v;	-> putbe(buf, (v : uint64), 2)}
+generic puthost8	= {buf, v;	-> puthost(buf, (v : uint8))}
+generic putle8		= {buf, v;	-> putle(buf, (v : uint64), 1)}
+generic putbe8		= {buf, v;	-> putbe(buf, (v : uint64), 1)}
+
+const putbe = {buf, val, n
+	var k
+	
+	for var i = 0; i < n; i++
+		k = val >> (8*(n-i-1))
+		buf[i] = (k & 0xff: byte)
+	;;
+	-> (n : size)
+}
+
+const putle = {buf, val, n
+	for var i = 0; i < n; i++
+		buf[i] = (val & 0xff : byte)
+		val >>= 8
+	;;
+	-> (n : size)
+}
+

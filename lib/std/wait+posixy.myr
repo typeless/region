@@ -1,0 +1,51 @@
+use sys
+
+use "die"
+use "syswrap"
+
+pkg std =
+	type waitstatus = union
+		`Wsuccess
+		`Wfailure
+		`Wsignalled
+		`Waiterror
+	;;
+
+	const wait	: (pid : pid -> waitstatus)
+	const waitany	: (-> (pid, waitstatus))
+;;
+
+const waitany = {
+	match dowait(-1)
+	| (p, st):	-> ((p : pid), st)
+	;;
+}
+
+const wait = {pid
+	match dowait(pid)
+	| (_, st):	-> st
+	;;
+}
+
+const dowait = {pid
+	var st, p
+
+:again
+	p = sys.waitpid((pid : sys.pid), &st, 0)
+	if p > 0
+		match sys.waitstatus(st)
+		/* 
+		when a process stops, eg, if paused by a debugger,
+		wait() will return. This API is for waiting until
+		a process exits. Loop instead.
+		*/
+		| `sys.Waitstop sig:	goto again
+		| `sys.Waitfail fail:	-> (p, `Waiterror)
+		| `sys.Waitsig sig:	-> (p, `Wsignalled)
+		| `sys.Waitexit 0:	-> (p, `Wsuccess)
+		| `sys.Waitexit _:	-> (p, `Wfailure)
+		;;
+	;;
+	-> (-1, `Waiterror)
+}
+

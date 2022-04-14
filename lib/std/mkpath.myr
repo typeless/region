@@ -1,0 +1,24 @@
+use "syswrap"
+use "errno"
+
+pkg std =
+	const mkpath	: (p : byte[:] -> errno)
+;;
+
+const mkpath = {p
+	var st
+
+	for var i = 0; i < p.len; i++
+		if p[i] == ('/' : byte) && i != 0
+			if !fexists(p[:i])
+				st = mkdir(p[:i], 0o755)
+				if st != 0
+					-> st
+				;;
+			;;
+		;;
+	;;
+	st = mkdir(p, 0o755)
+
+	-> Enone
+}

@@ -1,0 +1,20 @@
+use std
+use region
+
+pkg layer =
+	type stdheap
+	impl region.layer stdheap
+;;
+
+type stdheap = struct
+;;
+
+impl region.layer stdheap =
+	init = {
+		var a : stdheap
+		-> a
+	}
+	deinit = {a;}
+	get = {a, sz; -> std.bytealloc((sz : std.size))}
+	put = {a, p, sz; std.bytefree(p, (sz : std.size))}
+;;

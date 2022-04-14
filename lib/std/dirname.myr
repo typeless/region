@@ -1,0 +1,46 @@
+use "alloc"
+use "slcp"
+use "die"
+use "sldup"
+use "strfind"
+use "option"
+use "types"
+use "memops"
+
+pkg std =
+	const dirname	: (p : byte[:] -> byte[:])
+	const basename	: (p : byte[:] -> byte[:])
+;;
+
+extern const put : (fmt : byte[:], args : ... -> size)
+
+const dirname = {p
+	var end
+
+	for end = p.len; end > 1; end--
+		if p[end-1] != ('/' : byte)
+			break
+		;;
+	;;
+	p = p[:end]
+	match std.strrfind(p, "/")
+	| `std.None:	-> std.sldup(".")
+	| `std.Some 0:	-> std.sldup("/")
+	| `std.Some i:	-> std.sldup(p[:i])
+	;;
+}
+
+const basename = {p
+	var end
+
+	for end = p.len; end > 1; end--
+		if p[end-1] != ('/' : byte)
+			break
+		;;
+	;;
+	p = p[:end]
+	match std.strrfind(p, "/")
+	| `std.None:	-> std.sldup(p[:end])
+	| `std.Some i:	-> std.sldup(p[i+1:end])
+	;;
+}

@@ -1,0 +1,90 @@
+use sys
+
+use "types"
+use "errno"
+use "cstrconv"
+use "strfind"
+
+pkg std =
+	const nanosleep	: (nsecs : uint64 -> errno)
+	$noret const exit	: (status : int -> void)
+	pkglocal const bgetcwd	: (buf : byte[:] -> errno)
+	pkglocal const lasterr	: (-> errno)
+;;
+
+const nanosleep = {nsecs
+	if sys.sleep((nsecs/1_000_000 : uint32)) < 0
+		-> lasterr()
+	;;
+	-> 0
+}
+
+const bgetcwd = {buf
+	var fd
+
+	fd = sys.open(".", sys.Oread)
+	if fd < 0
+		-> (fd : errno)
+	;;
+
+	if sys.fd2path(fd, buf) == 0
+		/*
+		Because we don't return the size, the best we can do is
+		assume that if the buffer is completely full, we have
+		truncated it. Since we truncate at utf8 characters, we
+		can have at most 3 bytes truncated (4 bytes will fit
+		any utf8 char), and one byte for the nul terminator.
+		*/
+		if cstrlen(buf) + 5 == buf.len
+			-> Erange
+		else
+			-> (cstrlen(buf) : errno)
+		;;
+	;;
+	-> Emisc
+}
+
+const digitchars = "0123456789"
+const exit	= {status
+	var buf : byte[32]	/* big enough for exit status numbers */
+	var n, i
+	
+	if status == 0
+		sys.exits("")
+	else
+		status &= 255
+		i = 100
+		n = 0
+		while i > 0
+			if status >= i
+				buf[n++] = digitchars[(status/i)%10]
+			;;
+			i /= 10
+		;;
+		sys.exits(buf[:n])
+	;;
+}
+
+
+const lasterr = {
+	var errbuf	: byte[sys.Maxerr]
+	var err
+
+	sys.errstr(errbuf[:])
+	err = cstrconv(errbuf[:])
+	if strhas(err, "no error")
+		-> Enone
+	elif strhas(err, "already exists") || strhas(err, "is a directory")
+		-> Eexist
+	elif strhas(err, "read or write too large")
+		-> Erange
+	elif strhas(err, "read or write too small")
+		-> Erange
+	elif strhas(err, "i/o error")
+		-> Eio
+	elif strhas(err, "fd out of range or not open")
+		-> Ebadf
+	else
+		-> Emisc
+	;;
+}

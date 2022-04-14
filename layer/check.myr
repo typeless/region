@@ -1,0 +1,33 @@
+use region
+use "die"
+
+pkg layer =
+	type check(@s) :: region.layer, region.gauge @s
+	impl region.layer check(@s)
+;;
+
+type check(@s) = struct
+	super : @s
+;;
+
+impl region.layer check(@s) =
+	init = {
+		var a : check(@s)
+		a.super = region.init()
+		-> a
+	}
+	deinit = {a
+		var szalloc, szfree
+		(_, _, szalloc, szfree, _) = region.gauge(&a.super)
+		if szalloc != szfree
+			layer.die("memory leaked!\n")
+		;;
+		region.deinit(&a.super)
+	}
+	get = {a, sz
+		-> region.get(&a.super, sz)
+	}
+	put = {a, p, sz
+		region.put(&a.super, p, sz)
+	}
+;;

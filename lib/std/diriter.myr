@@ -1,0 +1,35 @@
+use "alloc"
+use "dir"
+use "option"
+
+pkg std =
+	type diriter = dir#
+	impl iterable diriter -> byte[:]
+
+	const byentry	: (d : dir# -> diriter)
+;;
+
+const byentry = {d
+	-> (d : diriter)
+}
+
+impl iterable diriter -> byte[:] =
+	__iternext__ = {itp, valp
+:nextfile
+		match dirread((itp# : dir#))
+		| `Some ".":	goto nextfile
+		| `Some "..":	goto nextfile
+		| `Some ent:
+			valp# = ent
+			-> true
+		| `None:
+			-> false
+		;;
+	}
+
+	__iterfin__ = {itp, valp
+		std.slfree(valp#)
+	}
+;;
+
+

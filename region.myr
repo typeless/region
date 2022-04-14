@@ -1,0 +1,94 @@
+use sys
+
+pkg region =
+	trait layer @a =
+		init		: (-> @a)
+		deinit		: (a : @a# -> void)
+		get		: (a : @a#, sz : sys.size -> byte#)
+		put		: (a : @a#, p : byte#, sz : sys.size -> void)
+	;;
+
+	trait gauge @g =
+		gauge		: (a : @g# -> (sys.size, sys.size, sys.size, sys.size, sys.size))
+	;;
+
+	type region = struct
+		next		: region#
+		bytealloc	: (sz : sys.size -> byte#)
+		bytefree	: (p : byte#, sz : sys.size -> void)
+		cleanup		: (-> void)
+	;;
+
+	generic enter		: (a : @a#, f : (-> @t) -> @t) :: layer @a
+	generic escape		: (f : (-> @t) -> @t)
+
+	const bytealloc		: (sz : sys.size -> byte#)
+	const bytefree		: (p : byte#, sz : sys.size -> void)
+
+	generic alloc		: ( -> @t#)
+	generic mk		: (v : @t -> @a#)
+
+	/* For debugging */
+	const top		: (-> region#)
+	const next		: (-> region#)
+;;
+
+/* TODO The only global variable.
+ * We can make it thread-local or protected with a lock */
+var __top__ : region#
+
+const top = {
+	-> __top__
+}
+
+const next = {
+	-> __top__.next
+}
+
+/* TODO Is the return value @t useful in practice? */
+generic enter = {a : @a#, f : (-> @t) -> @t :: layer @a
+	var y : @t
+	var r : region
+
+	r.bytealloc = {sz; -> get(a, sz)}
+	r.bytefree = {p, sz; put(a, p, sz)}
+	r.cleanup = {; deinit(a)}
+
+	r.next = __top__
+	__top__ = &r
+	y = f()
+	r.cleanup()
+	__top__ = r.next
+	-> y
+}
+
+generic escape = {f : (-> @t) -> @t
+	var y : @t
+	var saved : region#
+
+	saved = __top__
+	__top__ = __top__.next
+	y = f()
+	__top__ = saved
+	-> y
+}
+
+const bytealloc = {sz -> byte#
+	-> __top__.bytealloc(sz)
+}
+
+const bytefree = {p, sz
+	__top__.bytefree(p, sz)
+}
+
+generic alloc = { -> @t#
+	var p : @t#
+	p = (__top__.bytealloc(sizeof(@t)) : @t#)
+	-> p
+}
+
+generic mk = {v
+	var p = region.alloc()
+	p# = v
+	-> p
+}

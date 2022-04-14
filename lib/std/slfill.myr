@@ -1,0 +1,10 @@
+pkg std =
+	generic slfill	: (sl : @a[:], v : @a	-> @a[:])
+;;
+
+generic slfill = {sl, v
+	for var i = 0; i < sl.len; i++
+		sl[i] = v
+	;;
+	-> sl
+}

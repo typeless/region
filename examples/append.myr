@@ -1,0 +1,40 @@
+use std
+use region
+use layer
+use sys
+
+const main = {
+	var b : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.mmap))), byte[4096]))
+	b = region.init()
+
+	var xs : int[:]
+	xs = std.slalloc(0)
+
+	std.put("outside region xs: {}@{}\n", xs, &xs)
+
+	xs = region.enter(&b, {
+
+		var ys = std.slalloc(0)
+		for var i = 0; i < 5; i++
+			std.slpush(&ys, i)
+		;;
+
+		xs = region.escape({
+			-> std.sljoin(&xs, ys)
+		})
+
+		var zs = std.slalloc(0)
+		for var i = 0; i < 5; i++
+			std.slpush(&zs, i+i*10)
+		;;
+
+		xs = region.escape({
+			-> std.sljoin(&xs, zs)
+		})
+
+		-> xs
+	})
+
+	std.put("outside region xs: {}@{}\n", xs, &xs)
+	std.put("{}\n", b)
+}

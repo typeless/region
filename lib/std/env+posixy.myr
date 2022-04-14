@@ -1,0 +1,120 @@
+use sys
+
+use "alloc"
+use "cstrconv"
+use "die"
+use "extremum"
+use "fmt"
+use "sleq"
+use "memops"
+use "option"
+use "slcp"
+use "sldup"
+use "slpush"
+use "threadhooks"
+use "traits"
+
+pkg std =
+	const getenv	: (name : byte[:] -> option(byte[:]))
+	const getenvv	: (name : byte[:], default : byte[:] -> byte[:])
+	const setenv	: (name : byte[:], val : byte[:] -> void)
+;;
+
+const Zenvp = (0 : byte#)
+
+var envduped	: bool = false
+var environ	: byte#[:]
+
+const __init__ = {
+	envinit()
+}
+
+const getenv = {name
+	var n, env
+
+	for envp : environ
+		if envp != Zenvp
+			env = cstrconvp(envp)
+			n = min(name.len, env.len)
+			if eq(name, env[:n]) && eq(env[n:n+1], "=")
+				-> `Some env[n+1:]
+			;;
+		;;
+	;;
+	-> `None
+}
+
+const getenvv = {name, default
+	match getenv(name)
+	| `Some v:	-> v
+	| `None:	-> default
+	;;
+}
+
+const setenv = {name, val
+	var n, e, env, idx, found
+
+	idx = 0
+	found = false
+	e = fmt("{}={}\0", name, val)
+
+	lock(envlck)
+	for envp : environ
+		if envp == Zenvp
+			break
+		;;
+
+		env = cstrconvp(envp)
+		n = min(name.len, env.len - 1)
+		if eq(name, env[:n]) && env[n] == ('=' : byte)
+			found = true
+			break
+		;;
+		idx++
+	;;
+	if found
+		std.slfree(cstrconvp(environ[idx]))
+	else
+		idx = environ.len - 1
+		std.slpush(&environ, Zenvp)
+	;;
+	environ[idx] = (e : byte#)
+	sys.__cenvp = (environ : byte##)
+	unlock(envlck)
+}
+
+const envinit = {
+	var len, e, p
+
+	lock(envlck)
+	if environ.len != 0
+		unlock(envlck)
+		-> void
+	;;
+
+	/* 
+	  Here, we duplicate the environment so we can
+	  modify it. We take progressively bigger slices
+	  as we go, until we find the terminating null.
+
+	  It's a bit ugly, but what do?
+	 */
+	len = 0
+	environ = [][:]
+	while true
+		p = sys.__cenvp[:len+1][len]
+		if p != Zenvp
+			e = sldup(cstrconvp(p))
+			slpush(&e, 0)
+			p = (e : byte#)
+		;;
+		std.slpush(&environ, p)
+		if environ[len] == Zenvp
+			break
+		;;
+		len++
+	;;
+	sys.__cenvp = (environ : byte##)
+	unlock(envlck)
+}
+

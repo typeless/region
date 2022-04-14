@@ -1,0 +1,43 @@
+use sys
+use "types"
+use "errno"
+use "cstrconv"
+use "slcp"
+use "die"
+
+pkg std =
+	const nanosleep	: (nsecs : uint64 -> errno)
+	$noret const exit	: (status:int -> void)
+
+	pkglocal const bgetcwd	: (buf : byte[:] -> errno)
+;;
+
+const exit	= {status;	sys.exit(status)}
+
+const bgetcwd	= {buf
+	var res = (sys.__getcwd(buf) : errno)
+
+	if res == 0
+		/* openbsd > 6.5 returns 0 on success */
+		-> (cstrlen(buf) : errno)
+	elif res > 0
+		/* openbsd <= 6.5 returns the length including nul byte */
+		-> res - 1
+	elif res == Enomem
+		-> Erange
+	else
+		-> res
+	;;
+}
+
+const nanosleep	= {nsecs
+	var req, rem
+	var s, ns
+
+	s = (nsecs / 1_000_000_000 : int64)
+	ns = (nsecs % 1_000_000_000 : int64)
+	req = [.sec = s, .nsec = ns]
+
+	-> (sys.nanosleep(&req, &rem) : errno)
+}
+

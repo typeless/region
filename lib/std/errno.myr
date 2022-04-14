@@ -1,0 +1,42 @@
+use sys
+
+pkg std =
+	type errno = int
+
+	const Enone	: errno = 0
+	const Eperm	: errno = (sys.Eperm	: errno)
+	const Enoent	: errno = (sys.Enoent	: errno)
+	const Esrch	: errno = (sys.Esrch	: errno)
+	const Eintr	: errno = (sys.Eintr	: errno)
+	const Eio	: errno = (sys.Eio	: errno)
+	const Enxio	: errno = (sys.Enxio	: errno)
+	const E2big	: errno = (sys.E2big	: errno)
+	const Enoexec	: errno = (sys.Enoexec	: errno)
+	const Ebadf	: errno = (sys.Ebadf	: errno)
+	const Echild	: errno = (sys.Echild	: errno)
+	const Eagain	: errno = (sys.Eagain	: errno)
+	const Enomem	: errno = (sys.Enomem	: errno)
+	const Eacces	: errno = (sys.Eacces	: errno)
+	const Efault	: errno = (sys.Efault	: errno)
+	const Enotblk	: errno = (sys.Enotblk	: errno)
+	const Ebusy	: errno = (sys.Ebusy	: errno)
+	const Eexist	: errno = (sys.Eexist	: errno)
+	const Exdev	: errno = (sys.Exdev	: errno)
+	const Enodev	: errno = (sys.Enodev	: errno)
+	const Enotdir	: errno = (sys.Enotdir	: errno)
+	const Eisdir	: errno = (sys.Eisdir	: errno)
+	const Einval	: errno = (sys.Einval	: errno)
+	const Enfile	: errno = (sys.Enfile	: errno)
+	const Emfile	: errno = (sys.Emfile	: errno)
+	const Enotty	: errno = (sys.Enotty	: errno)
+	const Etxtbsy	: errno = (sys.Etxtbsy	: errno)
+	const Efbig	: errno = (sys.Efbig	: errno)
+	const Enospc	: errno = (sys.Enospc	: errno)
+	const Espipe	: errno = (sys.Espipe	: errno)
+	const Erofs	: errno = (sys.Erofs	: errno)
+	const Emlink	: errno = (sys.Emlink	: errno)
+	const Epipe	: errno = (sys.Epipe	: errno)
+	const Edom	: errno = (sys.Edom	: errno)
+	const Erange	: errno = (sys.Erange	: errno)
+	const Etimedout	: errno = (sys.Etimedout	: errno)
+;;

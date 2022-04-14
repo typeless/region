@@ -1,0 +1,147 @@
+use "types"
+use "introspect"
+use "die"
+
+pkg std =
+	type valist
+
+	const vastart		: (args : ...# -> valist)
+	const vatype		: (ap : valist# -> byte[:])
+	const vabytes		: (ap : valist# -> byte[:])
+	const vaenter		: (ap : valist# -> valist)
+	const vaenterunion	: (ap : valist#, elt : int32 -> valist)
+	generic vanext		: (ap : valist# -> @a)
+;;
+
+type valist = struct
+	args	: intptr
+	tc	: typecursor
+;;
+
+/* 
+ * a valist is really just a pointer to the varargs.
+ * we assume that these sit on the stack nicely,
+ * and don't need special handling to get to.
+ * 
+ * This will be a problem when we switch to a
+ * register based convention. We might want to
+ * force varargs onto the stack regardless.
+ */
+const vastart = {args
+	var tc, a
+
+	/*
+	pull out the args. These are on the stacks like so:
+
+		[ required ]
+		[   args   ]
+	       ---variadic--- 
+		[ typeinfo ] --> type description
+	        ------------
+		[ variadic ]
+		[   args   ]
+		[   here   ]
+
+	&args points to the typeinfo, &args + sizeof(void#)
+	points to the rest argument.
+	*/
+		
+	tc = typeenc(args)
+	a = (args : intptr) + sizeof(byte#)
+	-> [.args = a, .tc = tc]
+}
+
+extern const put	: (fmt : byte[:], args : ... -> size)
+const vaenter = {ap
+	var ty
+
+	ty = vatype(ap)
+	match typedesc(ty)
+	| `Tyslice enc:	-> [.args=sliceptr(ap.args), .tc=[.nelt=slicelen(ap.args), .rem=enc, .isiter=false]]
+	| `Tytuple tc:	-> [.args=cursoralign(ap.args, ty), .tc=tc]
+	| `Tystruct tc:	-> [.args=cursoralign(ap.args, ty), .tc=tc]
+	| `Tyarray (sz, enc):	-> [.args=ap.args, .tc=[.nelt=sz, .rem=enc, .isiter=false]]
+	| `Tyname (name, enc):	-> [.args=ap.args, .tc=typeenccursor(enc)]
+	| _:	std.die("unable to enter type\n")
+	;;
+}
+
+const cursoralign = {arg, ty
+	var ti, align
+
+	ti = typeinfo(ty)
+
+	/* apply the alignment to the arg pointer */
+	align = (ti.align : intptr)
+	-> (arg + align - 1) & ~(align - 1)
+}
+
+const vaenterunion = {ap, elt
+	var sub, ti, align
+
+	ti = typeinfo(tcpeek(&ap.tc))
+	align = (ti.align : intptr)
+	ap.args = (ap.args + align - 1) & ~(align - 1)
+	match typedesc(vatype(ap))
+	| `Tyunion nc:	
+		for var i = 0; i < elt; i++
+			ncnext(&nc)
+		;;
+		(_, sub) = ncnext(&nc)
+		-> [.args=ap.args + 4, .tc=typeenccursor(sub)]
+	| t:	std.die("type is not a union\n")
+	;;
+}
+
+const vatype = {ap
+	-> tcpeek(&ap.tc)
+}
+
+const vabytes = {ap
+	var sl, ti, align, p
+
+	ti = typeinfo(tcpeek(&ap.tc))
+
+	/* apply the alignment to the arg pointer */
+	align = (ti.align : intptr)
+	p = (ap.args + align - 1) & ~(align - 1)
+
+	sl = (ap.args : byte#)[:ti.size]
+	tcnext(&ap.tc)
+
+	ap.args = p + (ti.size : intptr)
+
+	-> sl
+}
+
+generic vanext = {ap -> @a
+	var ti, align, p
+
+	ti = typeinfo(tcpeek(&ap.tc))
+
+	/* apply the alignment to the arg pointer */
+	align = (ti.align : intptr)
+	p = (ap.args + align - 1) & ~(align - 1)
+
+	/* TODO: check for type mismatch */
+	tcnext(&ap.tc)
+	/* only move on after we read through the value */
+	ap.args = p + sizeof(@a)
+	-> (p : @a#)#
+}
+
+const sliceptr = {pp
+	var p
+
+	p = (pp : intptr)
+	p = (p + 0x7) & ~0x7
+	-> (p : intptr#)#
+}
+
+const slicelen = {pp
+	var p
+
+	p = (pp : intptr)
+	p = (p + 0xf) & ~0x7
+	-> (p : size#)#
+}

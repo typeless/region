@@ -1,0 +1,19 @@
+use layer
+use region
+use sys
+
+extern const main : (args : byte[:][:] -> void)
+extern const __init__ : (-> void)
+extern const __fini__ : (-> void)
+
+const region_main = {args
+	//var a0 : layer.bonwick
+	var a0 : layer.chunk(layer.batch(layer.mmap), byte[4096])
+
+	a0 = region.init()
+	region.enter(&a0, {
+		__init__()
+		main(args)
+		__fini__()
+	})
+}

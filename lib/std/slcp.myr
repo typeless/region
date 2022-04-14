@@ -1,0 +1,12 @@
+use "die"
+use "types"
+use "memops"
+
+pkg std =
+	generic slcp : (a : @a[:], b : @a[:] -> void)
+;;
+
+generic slcp = {a : @a[:], b : @a[:]
+	iassert(a.len == b.len, "arguments to slcp() must be of equal length\n")
+	memblit((a : byte#), (b : byte#), a.len * sizeof(@a))
+}

@@ -1,0 +1,80 @@
+use "alloc"
+use "env"
+use "errno"
+use "option"
+use "strfind"
+use "syswrap"
+use "slcp"
+
+pkg std = 
+	const execvp	: (cmd : byte[:], args : byte[:][:] -> errno)
+	const execvpe	: (cmd : byte[:], args : byte[:][:], env : byte[:][:] -> errno)
+;;
+
+const execvp = {cmd, args
+	var i, j, paths, binpath
+	var buf : byte[512]
+
+	match strfind(cmd, "/")
+	| `Some _:
+		-> execv(cmd, args)
+	| `None:
+		i = 0
+		j = 0
+		paths = std.getenvv("PATH", "/usr/local/bin:/bin:/usr/bin")
+		while j < paths.len
+			(i, j) = nextpath(paths, j)
+			binpath = mkpath(buf[:], paths[i:j], cmd)
+			execv(binpath, args)
+		;;
+	;;
+	-> -1
+}
+
+const execvpe = {cmd, args, env
+	var i, j, paths, binpath
+	var buf : byte[512]
+
+	match strfind(cmd, "/")
+	| `Some _:
+		-> execve(cmd, args, env)
+	| `None:
+		i = 0
+		j = 0
+		paths = std.getenvv("PATH", "/usr/local/bin:/bin:/usr/bin")
+		while j < paths.len
+			(i, j) = nextpath(paths, j)
+			binpath = mkpath(buf[:], paths[i:j], cmd)
+			execve(binpath, args, env)
+		;;
+	;;
+	-> -1
+}
+
+const nextpath = {p, start
+	var i, j
+
+	i = start
+	while i < p.len && p[i] == (':' : byte)
+		i++
+	;;
+	j = i
+	while j < p.len && p[j] != (':' : byte)
+		j++
+	;;
+	-> (i, j)
+}
+
+const mkpath = {buf, path, bin
+	var p, b
+
+	p = path.len
+	b = bin.len
+	if buf.len < p + b + 1
+		-> ""
+	;;
+	std.slcp(buf[:p], path)
+	std.slcp(buf[p:p + 1], "/")
+	std.slcp(buf[p + 1:p + b + 1], bin)
+	-> buf[:p + b + 1]
+}

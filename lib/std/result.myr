@@ -1,0 +1,7 @@
+pkg std =
+	type result(@a, @b) = union
+		`Ok	@a
+		`Err	@b
+	;;
+;;
+

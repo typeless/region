@@ -1,0 +1,123 @@
+use region
+use sys
+use "die"
+
+pkg layer =
+	type bigcache(@s)
+	impl region.layer bigcache(@s) :: region.layer @s
+;;
+
+type bigcache(@s) = struct
+	super : @s
+	bigcache: cacheelt[32]
+;;
+
+type cacheelt = struct
+	sz	: sys.size
+	p	: byte#
+;;
+
+/* Stolen from the bonwick allocator of myrddin stdlib */
+
+const Failmem   : byte# = (-1 : byte#)
+const Pagesz	= 4096
+
+const align = {v, align
+	-> (v + align - 1) & ~(align - 1)
+}
+
+impl region.layer bigcache(@s) :: region.layer @s =
+	init = {
+		var a : bigcache(@s)
+		a.super = region.init()
+		-> a
+	}
+	deinit = {a
+		region.deinit(&a.super)
+	}
+	get = {a, sz
+		var p
+
+		p = layer.Failmem
+		/*
+		 We need to round up to the page size so that unmapping
+		 doesn't end up taking out the tail of another allocation.
+		*/
+		sz = layer.align(sz, layer.Pagesz)
+
+		/* check our cache */
+		for var i = 0; i < a.bigcache.len; i++
+			if sz < a.bigcache[i].sz
+				/*
+				While the allocator may never use a small chunk, we need
+				to keep it together so when unmapping it in the free call,
+				end up unmapping the whole thing. We can't return a larger
+				size here than requested, because we don't track the size.
+
+				Eviction takes care of freeing it.
+				*/
+				p = a.bigcache[i].p
+				a.bigcache[i].sz -= sz
+				a.bigcache[i].p = ((p : sys.intptr) + (sz : sys.intptr) : byte#)
+				break
+			;;
+		;;
+		if p != layer.Failmem
+			-> p
+		;;
+
+		/* ok, lets give up and get memory from the os */
+		p = region.get(&a.super, sz)
+		if p != layer.Failmem
+			-> p
+		;;
+		layer.die("could not get memory\n")
+	}
+	put = {a, p, sz
+		var evictsz, evictp, evictidx
+		var endp, endblk
+
+		sz = layer.align(sz, layer.Pagesz)
+		evictp = p
+		evictidx = -1
+		evictsz = sz
+		endp = ((p : sys.intptr) + (sz : sys.intptr) : byte#)
+		for var i = 0; i < a.bigcache.len; i++
+			endblk = ((a.bigcache[i].p : sys.intptr) + (a.bigcache[i].sz : sys.intptr) : byte#)
+			/* merge in front of existing block */
+			if a.bigcache[i].p == endp
+				a.bigcache[i].sz += sz
+				a.bigcache[i].p = p
+				evictidx = -1
+				evictsz = 0
+				break
+			/* merge in behind existing block */
+			elif endblk == p
+				a.bigcache[i].sz += sz
+				evictidx = -1
+				evictsz = 0
+				break
+			;;
+			/* evict */
+			if a.bigcache[i].sz < evictsz
+				evictidx = i
+				evictsz = a.bigcache[i].sz
+				evictp = a.bigcache[i].p
+			;;
+		;;
+
+		if evictidx != -1
+			a.bigcache[evictidx].p = p
+			a.bigcache[evictidx].sz = sz
+		;;
+
+		/*
+		  Now that we've removed it, we can
+		  free it. It's not in the cache, so
+		  we don't need the lock held.
+		 */
+		if evictsz > 0
+			region.put(&a.super, evictp, evictsz)
+		;;
+	}
+;;

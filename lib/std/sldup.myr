@@ -1,0 +1,15 @@
+use "alloc"
+use "die"
+use "slcp"
+
+pkg std =
+	generic sldup : (sl : @a[:] -> @a[:])
+;;
+
+generic sldup = {sl
+	var ret
+
+	ret = slalloc(sl.len)
+	slcp(ret, sl)
+	-> ret
+}

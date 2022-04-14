@@ -1,0 +1,50 @@
+use std
+use regex
+use testr
+
+var str
+var dotstar, hello, world
+
+const main = {
+	str = ""
+	for var i = 0; i < 16; i++
+		std.sljoin(&str, "hello world!")
+	;;
+	std.sljoin(&str, "x")
+
+	dotstar = std.try(regex.compile(".*"))
+	hello = std.try(regex.compile("hel*o"))
+	world = std.try(regex.compile("wor*l*d!x"))
+
+	testr.bench([
+		[.name="matchall", .fn=matchall],
+		[.name="searchhello", .fn=searchhello],
+		[.name="searchworld", .fn=searchworld],
+	][:])
+
+	regex.free(dotstar)
+	regex.free(hello)
+	regex.free(world)
+	std.slfree(str)
+}
+
+const matchall = {ctx
+	match regex.exec(dotstar, str)
+	| `std.Some m:	regex.matchfree(m)
+	| `std.None:	std.fatal("Didn't match regex\n")
+	;;
+}
+
+const searchhello = {ctx
+	match regex.search(hello, str)
+	| `std.Some m:	regex.matchfree(m)
+	| `std.None:	std.fatal("Didn't match regex\n")
+	;;
+}
+
+const searchworld = {ctx
+	match regex.search(world, str)
+	| `std.Some m:	regex.matchfree(m)
+	| `std.None:	std.fatal("Didn't match regex\n")
+	;;
+}

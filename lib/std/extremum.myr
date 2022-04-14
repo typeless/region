@@ -1,0 +1,40 @@
+pkg std =
+	generic min	: (a : @a, b : @a -> @a)		:: numeric @a
+	generic max	: (a : @a, b : @a -> @a)		:: numeric @a
+	generic clamp	: (a : @a, min : @a, max : @a -> @a)	:: numeric @a
+	generic abs	: (a : @a -> @a)			:: numeric @a
+;;
+
+generic min = {a, b
+	if a < b
+		-> a
+	else
+		-> b
+	;;
+}
+
+generic max = {a, b
+	if a > b
+		-> a
+	else
+		-> b
+	;;
+}
+
+generic clamp = {a, min, max
+	if a < min
+		-> min
+	elif a > max
+		-> max
+	else
+		-> a
+	;;
+}
+
+generic abs = {a
+	if a < (0 : @a)
+		-> -a
+	else
+		-> a
+	;;
+}

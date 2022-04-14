@@ -1,0 +1,108 @@
+use "alloc"
+use "chartype"
+use "die"
+use "getint"
+use "slpush"
+use "traits"
+use "types"
+use "utf"
+use "memops"
+use "sleq"
+
+pkg std =
+	const siphash24	: (data : byte[:], seed : byte[16] -> uint64)
+
+	impl hashable @a[:] =
+		hash = {a
+			-> siphash24((a : byte#)[:a.len * sizeof(@a)], Seed)
+		}
+	;;
+
+	impl equatable bool =
+		eq = {a, b
+			-> a == b
+		}
+	;;
+
+	impl equatable @a :: integral,numeric @a =
+		eq = {a, b
+			-> a == b
+		}
+	;;
+
+	impl hashable @a :: integral,numeric @a =
+		hash = {a
+			-> siphash24((&a : byte#)[:sizeof(@a)], Seed)
+		}
+	;;
+
+	impl equatable @a# =
+		eq = {a, b
+			-> a == b
+		}
+	;;
+
+	impl hashable @a# =
+		hash = {a
+			-> hash((a : intptr))
+		}
+	;;
+;;
+
+const Seed : byte[16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+const sipround = {v0, v1, v2, v3 -> (uint64, uint64, uint64, uint64)
+	v0 += v1
+	v1 = (v1 << 13) | (v1 >> 51)
+	v1 ^= v0
+	v0 = (v0 << 32) | (v0 >> 32)
+	v2 += v3
+	v3 = (v3 << 16) | (v3 >> 48)
+	v3 ^= v2
+
+	v2 += v1
+	v1 = (v1 << 17) | (v1 >> 47)
+	v1 ^= v2
+	v2 = (v2 << 32) | (v2 >> 32)
+	v0 += v3
+	v3 = (v3 << 21) | (v3 >> 43)
+	v3 ^= v0
+
+	-> (v0, v1, v2, v3)
+}
+
+const siphash24 = {data, seed
+	var k0, k1, m, v0, v1, v2, v3, w
+	var tail : byte[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+
+	k0 = std.getle64(seed[0:8])
+	k1 = std.getle64(seed[8:16])
+	v0 = k0 ^ 0x736f6d6570736575
+	v1 = k1 ^ 0x646f72616e646f6d
+	v2 = k0 ^ 0x6c7967656e657261
+	v3 = k1 ^ 0x7465646279746573
+	w = (data.len + 8) / 8 - 1
+	for var i = 0; i < w; i++
+		m = std.getle64(data[8 * i:8 * (i + 1)])
+		v3 ^= m
+		(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+		(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+		v0 ^= m
+	;;
+	for var i = 0; i < data.len % 8; i++
+		tail[i] = data[8 * w + i]
+	;;
+	tail[7] = (data.len % 256 : byte)
+	m = std.getle64(tail[:])
+	v3 ^= m
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	v0 ^= m
+
+	v2 ^= 0xff
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	(v0, v1, v2, v3) = sipround(v0, v1, v2, v3)
+	-> v0 ^ v1 ^ v2 ^ v3
+}

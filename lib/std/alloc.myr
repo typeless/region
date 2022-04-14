@@ -1,0 +1,188 @@
+use "die"
+use "extremum"
+use "memops"
+use "syswrap"
+use "threadhooks"
+use "types"
+use "units"
+use "bytealloc"
+use "backtrace"
+use "memops"
+
+/*
+The allocator implementation here is based on Bonwick's slab allocator.
+
+For small allocations (up to Bktmax), it works by requesting large,
+power of two aligned chunks from the operating system, and breaking
+them into a linked list of equal sized chunks. Allocations are then
+satisfied by taking the head of the list of chunks. Empty slabs
+are removed from the freelist.
+
+The data structure looks something like this:
+   Bkts:
+	[16  byte] -> [slab hdr | chunk -> chunk -> chunk] -> [slab hdr | chunk -> chunk -> chunk]
+	[32  byte] -> Zslab
+	[64  byte] -> [slab hdr | chunk -> chunk]
+	...
+	[32k byte] -> ...
+
+Large allocations are simply satisfied by mmap().
+
+*/
+
+pkg std =
+	generic alloc		: ( -> @a#)
+	generic zalloc		: ( -> @a#)
+	generic free		: (v:@a# -> void)
+
+	generic slalloc		: (len : size -> @a[:])
+	generic slzalloc	: (len : size -> @a[:])
+	generic slgrow		: (sl : @a[:]#, len : size -> @a[:])
+	generic slzgrow		: (sl : @a[:]#, len : size -> @a[:])
+	generic slfree		: (sl : @a[:] -> void)
+;;
+
+type slheader = struct
+	cap	: size	/* capacity in bytes */
+	magic	: size	/* magic check value */
+;;
+
+/* Allocates an object of type @a, returning a pointer to it. */
+generic alloc = {-> @a#
+	-> (bytealloc(sizeof(@a)) : @a#)
+}
+
+generic zalloc = {
+	-> (zbytealloc(sizeof(@a)) : @a#)
+}
+
+/* Frees a value of type @a */
+generic free = {v:@a# -> void
+	bytefree((v : byte#), sizeof(@a))
+}
+
+/* allocates a slice of 'len' elements. */
+generic slalloc = {len
+	var p, sz
+
+	if len == 0
+		-> [][:]
+	;;
+	sz = len*sizeof(@a) + align(sizeof(slheader), Align)
+	sz = allocsz(sz)
+	p = bytealloc(sz + sizeof(size))
+	p = inithdr(p, sz)
+	-> (p : @a#)[0:len]
+}
+
+generic slzalloc = {len
+	var p, sz
+
+	if len == 0
+		-> [][:]
+	;;
+	sz = len*sizeof(@a) + align(sizeof(slheader), Align)
+	sz = allocsz(sz)
+	p = zbytealloc(sz + sizeof(size))
+	p = inithdr(p, sz)
+	-> (p : @a#)[0:len]
+}
+
+const inithdr = {p, sz
+	var phdr, pdat, pend
+
+	phdr = (p : slheader#)
+	phdr.cap = sz - align(sizeof(slheader), Align)
+
+	/* add start/end magics */
+	phdr.magic = (0xdeadbeefbadf00d : size)
+	pdat = (p : size) + align(sizeof(slheader), Align)
+	pend = ((pdat : size) + sz - align(sizeof(slheader), Align) : size#)
+	pend# = 0xfee1deadfee1dead
+
+	-> (pdat : byte#)
+}
+
+const checkhdr = {p
+	var phdr, pend, addr
+
+	addr = (p : size)
+	addr -= align(sizeof(slheader), Align)
+
+	/* check start/end magics */
+	phdr = (addr : slheader#)
+	iassert(phdr.magic == (0xdeadbeefbadf00d : size), "corrupt memory\n")
+	pend = ((p : size) + phdr.cap : size#)
+	iassert(pend# == 0xfee1deadfee1dead, "corrupt memory")
+}
+
+/* Frees a slice */
+generic slfree	 = {sl
+	var head, sz
+
+	if (sl : byte#) == Zslicep
+		-> void
+	;;
+
+	checkhdr((sl : byte#))
+	head = ((sl : byte#) : size)
+	head -= align(sizeof(slheader), Align)
+	sz = slcap((sl : byte#)) + align(sizeof(slheader), Align)
+	bytefree((head : byte#), sz + sizeof(size))
+}
+
+/* Grows a slice */
+generic slgrow = {sl : @a[:]#, len
+	var cap, nel
+	var new
+	var n
+
+	/* if the slice doesn't need a bigger bucket, we don't need to realloc. */
+	cap = 0
+	if (sl# : byte#) != Zslicep
+		cap = slcap((sl# : byte#))
+	;;
+	if cap >= len*sizeof(@a)
+		/* cast to pointer to work around bounds check */
+		sl# = (sl# : @a#)[:len]
+		-> sl#
+	;;
+
+	/* grow in factors of 1.5 */
+	nel = sl#.len
+	while nel < len
+		nel += (nel >> 2) + 1
+	;;
+
+	new = slalloc(nel)
+	n = min(len, sl#.len)
+	memblit((new : byte#), (sl# : byte#), n * sizeof(@a))
+	if sl#.len > 0
+		slfree(sl#)
+	;;
+	sl# = new[:len]
+	-> sl#
+}
+
+/* Grows a slice, filling new entries with zero bytes */
+generic slzgrow = {sl : @a[:]#, len
+	var oldlen
+	var base
+
+	oldlen = sl#.len
+	slgrow(sl, len)
+	base = ((sl# : byte#) : intptr)
+	if oldlen < len
+		memfill((sl#[oldlen:] : byte#), 0, (len - oldlen)*sizeof(@a))
+	;;
+	-> sl#
+}
+
+const slcap = {p
+	var phdr
+
+	phdr = ((p : size) - align(sizeof(slheader), Align) : slheader#)
+	std.iassert(phdr.magic == (0xdeadbeefbadf00d : size), "corrupt memory\n")
+	-> phdr.cap
+}
+

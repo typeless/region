@@ -1,0 +1,5 @@
+bin jsonparse =
+	parse.myr
+	lib @/layer:layer
+	lib @/:region
+;;

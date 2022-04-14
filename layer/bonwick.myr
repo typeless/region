@@ -1,0 +1,399 @@
+use sys
+use region
+
+use "die"
+
+pkg layer =
+	type bonwick
+	impl region.layer bonwick
+;;
+
+type bonwick = struct
+	buckets	: bucket[32] /* excessive */
+	trace	: bool
+	tracefd	: sys.fd
+	bigcache: cacheelt[32]
+;;
+
+type bucket = struct
+	sz	: sys.size	/* aligned size */
+	nper	: sys.size	/* max number of elements per slab */
+	slabs	: slab#		/* partially filled or free slabs */
+	cache	: slab#		/* cache of empty slabs, to prevent thrashing */
+	ncache	: sys.size	/* size of cache */
+;;
+
+type slab = struct
+	head	: byte#		/* head of virtual addresses, so we don't leak address space */
+	next	: slab#		/* the next slab on the chain */
+	prev	: slab#		/* the prev slab on the chain */
+	freehd	: chunk#	/* the nodes we're allocating */
+	nfree	: sys.size	/* the number of free nodes */
+	magic	: sys.size	/* ensure we didn't index into the void */
+;;
+
+/* NB: must be smaller than sizeof(slab) */
+type chunk = struct
+	next	: chunk#	/* the next chunk in the free list */
+;;
+
+type cacheelt = struct
+	sz	: sys.size
+	p	: byte#
+;;
+
+const Zslicep	= (0 : byte#)
+const Align	= 16	/* minimum allocation alignment */
+const Failmem   : byte# = (-1 : byte#)
+const Canunmap	: bool = true
+
+generic KiB = 1024
+
+const Zslab	= (0 : slab#)
+const Zchunk	= (0 : chunk#)
+const Slabsz 	= 512*KiB
+const Cachemax	= 4
+const Bktmax	= 128*KiB	/* a balance between wasted space and falling back to mmap */
+const Pagesz	= 4*KiB
+
+impl region.layer bonwick =
+	init = {
+		var a : bonwick
+
+		for var i = 0; i < a.buckets.len && (Align << i) <= Bktmax; i++
+			bktinit(&a.buckets[i], Align << i)
+		;;
+
+		-> a
+	}
+	deinit = {a
+	}
+	get = {a, sz
+		var bkt, p
+
+		if sz <= Bktmax
+			bkt = &a.buckets[bktnum(sz)]
+			p = bktalloc(bkt)
+		else
+			p = bigalloc(a, sz)
+		;;
+		-> p
+	}
+	put = {a, p, sz
+		var bkt
+
+		if p == (0 : byte#)
+			-> void
+		;;
+		if (sz < Bktmax)
+			bkt = &a.buckets[bktnum(sz)]
+			bktfree(a, bkt, p)
+		else
+			bigfree(a, p, sz)
+		;;
+	}
+;;
+
+const bigalloc = {a, sz
+	var p
+
+	p = Failmem
+	/*
+	 We need to round up to the page size so that unmapping
+	 doesn't end up taking out the tail of another allocation.
+	*/
+	sz = align(sz, Pagesz)
+
+	/* check our cache */
+	for var i = 0; i < a.bigcache.len; i++
+		if sz < a.bigcache[i].sz
+			/*
+			While the allocator may never use a small chunk, we need
+			to keep it together so when unmapping it in the free call,
+			end up unmapping the whole thing. We can't return a larger
+			size here than requested, because we don't track the size.
+
+			Eviction takes care of freeing it.
+			*/
+			p = a.bigcache[i].p
+			a.bigcache[i].sz -= sz
+			a.bigcache[i].p = ((p : sys.intptr) + (sz : sys.intptr) : byte#)
+			break
+		;;
+	;;
+	if p != Failmem
+		-> p
+	;;
+
+	/* ok, lets give up and get memory from the os */
+	p = getmem(sz)
+	if p != Failmem
+		-> p
+	;;
+	die("could not get memory\n")
+}
+
+const bigfree = {a, p, sz
+	var evictsz, evictp, evictidx
+	var endp, endblk
+
+	sz = align(sz, Pagesz)
+	evictp = p
+	evictidx = -1
+	evictsz = sz
+	endp = ((p : sys.intptr) + (sz : sys.intptr) : byte#)
+	for var i = 0; i < a.bigcache.len; i++
+		endblk = ((a.bigcache[i].p : sys.intptr) + (a.bigcache[i].sz : sys.intptr) : byte#)
+		/* merge in front of existing block */
+		if a.bigcache[i].p == endp
+			a.bigcache[i].sz += sz
+			a.bigcache[i].p = p
+			evictidx = -1
+			evictsz = 0
+			break
+		/* merge in behind existing block */
+		elif endblk == p
+			a.bigcache[i].sz += sz
+			evictidx = -1
+			evictsz = 0
+			break
+		;;
+		/* evict */
+		if a.bigcache[i].sz < evictsz
+			evictidx = i
+			evictsz = a.bigcache[i].sz
+			evictp = a.bigcache[i].p
+		;;
+	;;
+
+	if evictidx != -1
+		a.bigcache[evictidx].p = p
+		a.bigcache[evictidx].sz = sz
+	;;
+
+	/*
+	  Now that we've removed it, we can
+	  free it. It's not in the cache, so
+	  we don't need the lock held.
+	 */
+	if evictsz > 0
+		freemem(evictp, evictsz)
+	;;
+}
+
+/* Sets up a single empty bucket */
+const bktinit = {b, sz
+	b.sz = align(sz, Align)
+	b.nper = (Slabsz - sizeof(slab))/b.sz
+	b.slabs = Zslab
+	b.cache = Zslab
+	b.ncache = 0
+}
+
+/* Creates a slab for bucket 'bkt', and fills the chunk list */
+const mkslab = {bkt
+	var p, s
+	var b, bnext
+	var off /* offset of chunk head */
+
+	if bkt.ncache > 0
+		s = bkt.cache
+		bkt.cache = s.next
+		bkt.ncache--
+		s.next = Zslab
+		-> s
+	;;
+
+	/*
+	tricky: we need power of two alignment, so we allocate double the
+	needed size, chop off the unaligned ends, and waste the address
+	space. Since the OS is "smart enough", this shouldn't actually
+	cost us memory, and 64 bits of address space means that we're not
+	going to have issues with running out of address space for a
+	while. On a 32 bit system this would be a bad idea.
+	*/
+	p = getmem(Slabsz*2)
+	if p == Failmem
+		die("Unable to get memory")
+	;;
+
+	b = Zchunk
+	s = (align((p : sys.size), Slabsz) : slab#)
+	s.head = p
+	s.nfree = bkt.nper
+	s.next = Zslab
+	s.prev = Zslab
+	s.magic = 0xfee1baff1ed
+	/* skip past the slab header */
+	off = align(sizeof(slab), Align)
+	bnext = nextchunk((s : chunk#), off)
+	s.freehd = bnext
+	for var i = 0; i < bkt.nper; i++
+		b = bnext
+		bnext = nextchunk(b, bkt.sz)
+		b.next = bnext
+	;;
+	b.next = Zchunk
+	-> s
+}
+
+/*
+Allocates a node from bucket 'bkt', crashing if the
+allocation cannot be satisfied. Will create a new slab
+if there are no slabs on the freelist.
+*/
+const bktalloc = {bkt
+	var s, c
+
+	/* find a slab */
+	s = bkt.slabs
+	if s == Zslab
+		s = mkslab(bkt)
+		bkt.slabs = s
+		if s == Zslab
+			die("No memory left")
+		;;
+	;;
+
+	/* grab the first chunk on the slab */
+	c = s.freehd
+	s.freehd = c.next
+	s.nfree--
+	if s.freehd == Zchunk
+		bkt.slabs = s.next
+		if s.next != Zslab
+			s.next.prev = Zslab
+		;;
+	;;
+	-> (c : byte#)
+}
+
+/*
+Frees a chunk of memory 'm' into bucket 'bkt'.
+Assumes that the memory already came from a slab
+that was created for bucket 'bkt'. Will crash
+if this is not the case.
+*/
+const bktfree = {a, bkt, m
+	var s, c
+
+	s = (mtrunc(m, Slabsz) : slab#)
+	iassert(s.magic == 0xfee1baff1ed, "bad free")
+	c = (m : chunk#)
+	if s.nfree == 0
+		if bkt.slabs != Zslab
+			bkt.slabs.prev = s
+		;;
+		s.next = bkt.slabs
+		s.prev = Zslab
+		bkt.slabs = s
+	elif s.nfree == bkt.nper - 1
+		/* unlink the slab from the list */
+		if s.next != Zslab
+			s.next.prev = s.prev
+		;;
+		if s.prev != Zslab
+			s.prev.next = s.next
+		;;
+		if bkt.slabs == s
+			bkt.slabs = s.next
+		;;
+		/*
+		HACK HACK HACK: if we can't unmap, keep an infinite cache per slab size.
+		We should solve this better somehow.
+		*/
+		if bkt.ncache < Cachemax || !Canunmap
+			s.next = bkt.cache
+			s.prev = Zslab
+			bkt.cache = s
+			bkt.ncache++
+		else
+			/* we mapped 2*Slabsz so we could align it,
+			 so we need to unmap the same */
+			freemem(s.head, Slabsz*2)
+		;;
+		-> void
+	;;
+	s.nfree++
+	c.next = s.freehd
+	s.freehd = c
+}
+
+/*
+Finds the correct bucket index to allocate from
+for allocations of size 'sz'
+*/
+const bitpos : byte[32] = [
+  0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
+  8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
+]
+const bktnum = {sz
+	var n, v
+
+	v = sz > 0 ? ((sz - 1) >> 3 : uint32) : 0
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+
+	n = bitpos[((v * 0x07c4acdd) & 0xffff_ffffui) >> 27]
+	-> (n : sys.size)
+}
+
+/*
+returns the actual size we allocated for a given
+size request
+*/
+const allocsz = {sz
+	var bktsz
+
+	if sz <= Bktmax
+		bktsz = Align
+		for var i = 0; bktsz <= Bktmax; i++
+			if bktsz >= sz
+				-> bktsz
+			;;
+			bktsz *= 2
+		;;
+	else
+		-> align(sz, Pagesz)
+	;;
+	die("Size does not match any buckets")
+}
+
+/*
+aligns a size to a requested alignment.
+'align' must be a power of two
+*/
+const align = {v, align
+	-> (v + align - 1) & ~(align - 1)
+}
+
+/*
+chunks are variable sizes, so we can't just
+index to get to the next one
+*/
+const nextchunk = {b, sz : sys.size
+	-> ((b : sys.intptr) + (sz : sys.intptr) : chunk#)
+}
+
+/*
+truncates a pointer to 'align'. 'align' must
+be a power of two.
+*/
+const mtrunc = {m, align
+	-> ((m : sys.intptr) & ~((align : sys.intptr) - 1) : byte#)
+}
+
+const getmem	= {sz;
+	sz = (sz + 4095) & ~4095
+	-> sys.mmap((0 : byte#), (sz : sys.size), sys.Mprotrw, sys.Mpriv | sys.Manon, -1, 0)
+}
+const freemem	= {p, sz;	sys.munmap(p, (sz : sys.size))}
+
+const iassert = {cond, msg
+	if !cond
+		die(msg)
+	;;
+}

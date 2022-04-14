@@ -1,0 +1,60 @@
+use sys
+
+use "alloc"
+use "die"
+use "option"
+use "result"
+use "slcp"
+use "sldup"
+use "types"
+
+pkg std =
+	type dir = struct
+		fd	: sys.fd
+		buf	: byte[16384]
+		len	: int64
+		off	: int64
+		base	: int64
+	;;
+
+	const diropen	: (p : byte[:] -> std.result(dir#, byte[:]))
+	const dirread	: (d : dir# -> std.option(byte[:]))
+	const dirclose	: (d : dir# -> void)
+;;
+
+const diropen = {p
+	var fd
+	var dir
+
+	fd = sys.open(p, sys.Ordonly | sys.Odir)
+	if fd < 0
+		-> `Err "couldn't open directory"
+	;;
+	dir = zalloc()
+	dir.fd = fd
+	-> `Ok dir
+}
+
+const dirread = {d
+	var len
+	var dent
+
+	if d.off >= d.len
+		len = sys.getdirentries64(d.fd, d.buf[:], &d.base)
+		if len <= 0
+			-> `None
+		;;
+		d.len = len
+		d.off = 0
+	;;
+
+	dent = (&d.buf[d.off] : sys.dirent64#)
+	d.off += (dent.reclen : int64)
+	-> `Some sldup(dent.name[:dent.namlen])
+}
+
+const dirclose = {d
+	sys.close(d.fd)
+	free(d)
+}
+

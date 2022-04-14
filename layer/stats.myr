@@ -1,0 +1,52 @@
+use region
+use sys
+
+pkg layer =
+	type stats(@s) :: region.layer @s
+	impl region.layer stats(@s)
+	impl region.gauge stats(@s)
+;;
+
+type stats(@s) = struct
+	super		: @s
+	nalloc		: sys.size
+	nfree		: sys.size
+	szalloc		: sys.size
+	szfree		: sys.size
+	watermark	: sys.size
+;;
+
+impl region.layer stats(@s) =
+	init = {
+		var a : stats(@s)
+		a.nalloc = 0
+		a.szalloc = 0
+		a.nfree = 0
+		a.szfree = 0
+		a.watermark = 0
+		a.super = region.init()
+		-> a
+	}
+	deinit = {a
+		region.deinit(&a.super)
+	}
+	get = {a, sz
+		a.nalloc++
+		a.szalloc += sz
+		if a.szalloc - a.szfree > a.watermark
+			a.watermark = a.szalloc - a.szfree
+		;;
+		-> region.get(&a.super, sz)
+	}
+	put = {a, p, sz
+		a.nfree++
+		a.szfree += sz
+		region.put(&a.super, p, sz)
+	}
+;;
+
+impl region.gauge stats(@s) =
+	gauge = {a
+		-> (a.nalloc, a.nfree, a.szalloc, a.szfree, a.watermark)
+	}
+;;

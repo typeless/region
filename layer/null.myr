@@ -1,0 +1,23 @@
+use region
+
+pkg layer =
+	type null
+	impl region.layer null
+;;
+
+type null = struct
+;;
+
+impl region.layer null =
+	init = {
+		var a : null
+		-> a
+	}
+	deinit = {a
+	}
+	get = {a, sz
+		-> (0 : byte#)
+	}
+	put = {a, p, sz
+	}
+;;

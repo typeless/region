@@ -1,0 +1,113 @@
+use std
+
+const main = {
+	/* Raw ASCII */
+	std.assert(std.strcellwidth("foobar") == 6, "wrong width of \"foobar\"")
+	std.assert(std.strcellwidth("") == 0, "wrong width of \"\"")
+
+	/* Control characters */
+	var ab = [ (0x63 : byte), (0x00 : byte), (0x64 : byte) ][:]
+	std.assert(std.strcellwidth(ab) == 2, "wrong width of \"a^@b\"")
+
+	/* Accents and combining marks */
+	std.assert(std.strcellwidth("Αυτό") == 4, "wrong width of \"Αυτό")
+	std.assert(std.strcellwidth("ŗšțūžäñ") == 7, "wrong width of \"ŗšțūžäñ")
+	std.assert(std.strcellwidth("c̸̶̡̡̗̣͕̪͖ͯ͑̈̄̿͊ͣ̈́͝ḧ̵̸̛̥͚̭̣͈͖̼͈͓͓̫͍́̓ͪͫ̋͘͡a̢̩̱̠̘̹̤̯͚̦̰̼̯̲̞͆͂̿ͬ̂͋͒̈ͅͅo̷̷̶̥͖̼̮̳̗͚ͦ̉̆̅̃̍ͤ̆͑ͣ̽́̚s̓̍̍̄͏̖̞̟̱́͡͡͝") == 5, "wrong width of \"c̸̶̡̡̗̣͕̪͖ͯ͑̈̄̿͊ͣ̈́͝ḧ̵̸̛̥͚̭̣͈͖̼͈͓͓̫͍́̓ͪͫ̋͘͡a̢̩̱̠̘̹̤̯͚̦̰̼̯̲̞͆͂̿ͬ̂͋͒̈ͅͅo̷̷̶̥͖̼̮̳̗͚ͦ̉̆̅̃̍ͤ̆͑ͣ̽́̚s̓̍̍̄͏̖̞̟̱́͡͡͝\"")
+	std.assert(std.strcellwidth("q̆") == 1, "wrong width of \"q̆\"")
+	std.assert(std.strcellwidth(" ͝ ⃔ ⃫") == 3, "wrong width of \" ͝ ⃔ ⃫\"")
+	std.assert(std.strcellwidth("f⃫⃔͝") == 1, "wrong width of \"f⃫⃔͝\"")
+
+	/* Non-Latin scripts */
+	std.assert(std.strcellwidth("Οὐχὶ ταὐτὰ παρίσταταί") == 21, \
+		"wrong width of Greek")
+	std.assert(std.strcellwidth("Я человек больной...") == 20, \
+		"wrong width of Cyrillic")
+	std.assert(std.strcellwidth("銀河の歴史がまた1ページ") == 23, \
+		"wrong width of CJK")
+	std.assert(std.strcellwidth("ᚻᛖ ᚳᚹᚫᚦ ᚦᚫᛏ ᚻᛖ ᛒᚢᛞᛖ") == 19, \
+		"wrong width of runes")
+	std.assert(std.strcellwidth("𒀸 𒌋𒅗 𒆷 𒂅𒌒 𒍜 𒀭𒉌𒄿 𒈗 𒁁𒉌 𒋬") == 22, \
+		"wrong width of Cuneiform")
+
+	/* graphemestep() */
+	var s = "̀a史c\tЯx̀̀̀̀̀\nz̉"
+	var sub, rest
+
+	(sub, rest) = std.graphemestep(s)
+	std.assert(std.eq(sub, "̀"), "didn't get U+0300 as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "a"), "didn't get \"a\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "史"), "didn't get \"史\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "c"), "didn't get \"c\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "\t"), "didn't get \"\\t\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "Я"), "didn't get \"Я\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "x̀̀̀̀̀"), "didn't get \"x̀̀̀̀̀\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "\n"), "didn't get \"\\n\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "z̉"), "didn't get \"z̉\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(sub.len == 0, "didn't get \"\" as last grapheme")
+
+
+	/* with excessive combiners */
+	s = "\tc̸̶̡̡̗̣͕̪͖ͯ͑̈̄̿͊ͣ̈́͝ḧ̵̸̛̥͚̭̣͈͖̼͈͓͓̫͍́̓ͪͫ̋͘͡a̢̩̱̠̘̹̤̯͚̦̰̼̯̲̞͆͂̿ͬ̂͋͒̈ͅͅo̷̷̶̥͖̼̮̳̗͚ͦ̉̆̅̃̍ͤ̆͑ͣ̽́̚s̓̍̍̄͏̖̞̟̱́͡͡͝"
+
+	(sub, rest) = std.graphemestep(s)
+	std.assert(std.eq(sub, "\t"), "didn't get \"\\t\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "c̸̶̡̡̗̣͕̪͖ͯ͑̈̄̿͊ͣ̈́͝"), "didn't get \"c̸̶̡̡̗̣͕̪͖ͯ͑̈̄̿͊ͣ̈́͝\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "ḧ̵̸̛̥͚̭̣͈͖̼͈͓͓̫͍́̓ͪͫ̋͘͡"), "didn't get \"ḧ̵̸̛̥͚̭̣͈͖̼͈͓͓̫͍́̓ͪͫ̋͘͡\" as next grapheme, it was {}", rest)
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "a̢̩̱̠̘̹̤̯͚̦̰̼̯̲̞͆͂̿ͬ̂͋͒̈ͅͅ"), "didn't get \"a̢̩̱̠̘̹̤̯͚̦̰̼̯̲̞͆͂̿ͬ̂͋͒̈ͅͅ\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "o̷̷̶̥͖̼̮̳̗͚ͦ̉̆̅̃̍ͤ̆͑ͣ̽́̚"), "didn't get \"o̷̷̶̥͖̼̮̳̗͚ͦ̉̆̅̃̍ͤ̆͑ͣ̽́̚\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "s̓̍̍̄͏̖̞̟̱́͡͡͝"), "didn't get \"s̓̍̍̄͏̖̞̟̱́͡͡͝\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(sub.len == 0, "didn't get \"\" as last grapheme")
+
+	/* now with invalid UTF-8 */
+	s = [ ('A' : byte), ('b' : byte), (0xFE : byte),
+	      (0xFF : byte), (0x92 : byte), ('c' : byte) ][:]
+
+	(sub, rest) = std.graphemestep(s)
+	std.assert(std.eq(sub, "A"), "didn't get \"A\" as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "b"), "didn't get \"b\" as next grapheme")
+
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, [ (0xFE : byte) ][:]), "didn't get 0xEE, len={} as next grapheme", sub.len)
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, [ (0xFF : byte) ][:]), "didn't get 0xEA as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, [ (0x92 : byte) ][:]), "didn't get 0xEF as next grapheme")
+
+	(sub, rest) = std.graphemestep(rest)
+	std.assert(std.eq(sub, "c"), "didn't get \"c\" as next grapheme")
+}

@@ -1,0 +1,45 @@
+use sys
+use region
+
+pkg layer =
+	type mmap
+	impl region.layer mmap
+;;
+
+type mmap = struct
+;;
+
+generic Pagesz = 4096
+
+const align = {v, align
+	-> (v + align - 1) & ~(align - 1)
+}
+
+const Failmem = (-1 : byte#)
+
+const getmem = {sz;
+	sz = align(sz, Pagesz)
+	-> sys.mmap((0 : byte#), (sz : sys.size), sys.Mprotrw, sys.Mpriv | sys.Manon, -1, 0)
+}
+
+const freemem = {p, sz
+	sys.munmap(p, (sz : sys.size))
+}
+
+impl region.layer mmap =
+	init = {
+		var a : mmap
+		-> a
+	}
+	deinit = {a;}
+	get = {a, sz
+		var p = getmem(sz)
+		if p == Failmem
+			-> (0 : byte#)
+		;;
+		-> p
+	}
+	put = {a, p, sz
+		freemem(p, sz)
+	}
+;;

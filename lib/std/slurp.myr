@@ -1,0 +1,50 @@
+use "alloc"
+use "die"
+use "result"
+use "extremum"
+use "syswrap"
+use "errno"
+use "types"
+
+pkg std =
+	const slurp	: (path : byte[:] -> result(byte[:], errno))
+	const fslurp	: (path : fd -> result(byte[:], errno))
+;;
+
+const Bufstart = 4096
+
+const slurp = {path
+	var sl
+	match open(path, Oread)
+	| `Err e:	-> `Err e
+	| `Ok fd:
+		sl = fslurp(fd)
+		close(fd)
+		-> sl
+	;;
+}
+
+const fslurp = {fd
+	var len, bufsz
+	var buf
+
+	len = 0
+	bufsz = Bufstart
+	buf = slalloc(bufsz)
+	while true
+		match read(fd, buf[len:])
+		| `Ok 0:
+			-> `Ok buf[:len]
+		| `Ok n:
+			len += n
+			if len + 2*n >= bufsz
+				bufsz *= 2
+				slgrow(&buf, bufsz)
+			;;
+		| `Err e:
+			slfree(buf)
+			-> `Err e
+		;;
+	;;
+	die("unreachable")
+}

@@ -1,0 +1,57 @@
+use sys
+use "errno"
+use "cstrconv"
+use "slcp"
+use "die"
+
+pkg std =
+	const nanosleep	: (nsecs : uint64 -> errno)
+	$noret const exit	: (status:int -> void)
+
+	pkglocal const bgetcwd	: (buf : byte[:] -> errno)
+;;
+
+
+extern const put	: (fmt : byte[:], args : ... -> int64)
+
+const nanosleep	= {nsecs
+	var s, us
+
+	s = (nsecs / 1_000_000_000 : int64)
+	us = (nsecs % 1_000_000_000 / 1000 : int32)
+	-> (sys.select( \
+		0, \
+		(0 : sys.fdset#), \
+		(0 : sys.fdset#), \
+		(0 : sys.fdset#), \
+		&[.sec = s, .usec = us] \
+	) : errno)
+}
+
+const exit	= {status;
+	sys.exit(status)
+}
+
+const bgetcwd	= {buf
+	var path : byte[sys.Maxpathlen]
+	var fd, len, err
+
+	fd = sys.open(".", sys.Ordonly)
+	if fd < 0
+		-> (fd : errno)
+	;;
+	/* 
+	FIXME: if the path is longer than sys.Pathmax, we should fall back to
+	the ugly method of finding the path.
+	*/
+	err = (sys.fcntl(fd, sys.Fgetpath, (path[:] : byte#)) : errno)
+	if err < 0
+		-> err
+	;;
+	len = cstrlen(path[:])
+	if len >= buf.len
+		-> Erange
+	;;
+	slcp(buf[:len], path[:len])
+	-> (len : errno)
+}

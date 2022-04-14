@@ -1,0 +1,150 @@
+use "chartype"
+use "die"
+use "fmt"
+use "sleq"
+use "intparse"
+use "option"
+use "slcp"
+use "slfill"
+use "strfind"
+use "striter"
+use "traits"
+use "types"
+
+ /* FIXME: needed for decls which should be pulled in as hidden */
+use "hasprefix"
+use "utf"
+
+pkg std =
+	type netaddr = union
+		`Ipv4	byte[4]
+		`Ipv6	byte[16]
+	;;
+
+	const ipparse	: (ip : byte[:]	-> option(netaddr))
+	const ip4parse	: (ip : byte[:] -> option(netaddr))
+	const ip6parse	: (ip : byte[:] -> option(netaddr))
+;;
+
+const ipparse = {ip
+	match strfind(ip, ":")
+	| `Some _:	-> ip6parse(ip)
+	| `None:	-> ip4parse(ip)
+	;;
+}
+
+const ip4parse = {ip
+	var a, b, c, d
+	var ok
+
+	(a, ip, ok) = num(ip, 0, 255, 10, '.', true)
+	(ip, ok) = delim(ip, '.', ok)
+	(b, ip, ok) = num(ip, 0, 255, 10, '.', ok)
+	(ip, ok) = delim(ip, '.', ok)
+	(c, ip, ok) = num(ip, 0, 255, 10, '.', ok)
+	(ip, ok) = delim(ip, '.', ok)
+	(d, ip, ok) = num(ip, 0, 255, 10, '.', ok)
+
+	if ok && ip.len == 0
+		-> `Some (`Ipv4 [a, b, c, d])
+	else
+		-> `None
+	;;
+}
+
+const ipv6seg = 8
+
+const ip6parse = {ip
+	var val : byte[16]
+	var expand
+	var v, ok
+	var nseg, segsplit
+
+	ok = true
+	expand = false
+	segsplit = 0
+
+	if ip.len > 2 && eq(ip[:2], "::")
+		expand = true
+	;;
+
+	nseg = 0
+	for var i = 0; ip.len > 0 && ok; i++
+		/* parse 'num' segment */
+		(v, ip, ok) = num(ip, 0, 65536, 16, ':', ok)
+
+		/* pack it into the bytes */
+		val[i*2] = ((v & 0xff00) >> 8 : byte)
+		val[i*2 + 1] = (v & 0xff : byte)
+
+		nseg++
+		if ip.len == 0 || nseg == ipv6seg
+			break
+		;;
+
+		(ip, ok) = delim(ip, ':', ok)
+		/* only one '::' allowed once */
+		if ip.len > 0 && ip[0] == (':' : byte) && !expand
+			(ip, ok) = delim(ip, ':', ok)
+			expand = true
+			segsplit = nseg
+		;;
+	;;
+
+	if ok && ip.len == 0
+		if expand
+			expandsplit(val[:], nseg, segsplit)
+		elif nseg != ipv6seg
+			-> `None
+		;;
+		-> `Some `Ipv6 val
+	else
+		-> `None
+	;;
+}
+
+/* take "a:b::c:d" and expand it to "a:b:0:0:...:0:c:d" */
+const expandsplit = {ip, nseg, segsplit
+	var head, tail
+	var split, middle
+
+	split = segsplit * 2
+	middle = (ipv6seg - nseg) * 2
+	head = ip[:split]
+	tail = ip[split : ip.len - middle]
+
+	std.slcp(ip[ip.len - tail.len:], tail)
+	std.slfill(ip[head.len : ip.len - tail.len], 0)
+}
+
+const delim = {ip, sep, ok
+	if ip.len > 0 && ip[0] == (sep : byte)
+		-> (ip[1:], ok)
+	else
+		-> ("", false)
+	;;
+}
+
+generic num = {ip, lo, hi, base, sep, ok -> (@a, byte[:], bool) :: numeric,integral @a
+	var len
+
+	if !ok
+		-> (0, "", false)
+	;;
+
+	for len = 0; len < ip.len; len++
+		if ip[len] == (sep : byte)
+			break
+		;;
+	;;
+	match intparsebase(ip[:len], base)
+	| `std.Some v:
+		if v < lo || v > hi
+			-> (0, "", false)
+		;;
+		-> ((v : @a), ip[len:], true)
+	| `std.None:
+		-> (0, "", false)
+	;;
+}
+

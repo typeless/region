@@ -1,0 +1,51 @@
+use "types"
+use "option"
+
+pkg std =
+	const strfind	: (haystack : byte[:], needle : byte[:] -> option(size))
+	const strrfind	: (haystack : byte[:], needle : byte[:] -> option(size))
+	const strhas	: (haystack : byte[:], needle : byte[:]	-> bool)
+;;
+
+const strfind = {haystack, needle
+	if needle.len > haystack.len
+		-> `std.None
+	elif needle.len == 0 && haystack.len == 0
+		-> `std.Some 0
+	;;
+	for var i = 0; i <= haystack.len - needle.len; i++
+		for var j = 0; j < needle.len; j++
+			if haystack[i + j] != needle[j]
+				goto next
+			;;
+		;;
+		-> `std.Some i
+:next
+	;;
+	-> `std.None
+}
+
+const strrfind = {haystack, needle
+	if needle.len > haystack.len
+		-> `std.None
+	elif needle.len == 0 && haystack.len == 0
+		-> `std.Some 0
+	;;
+	for var i = haystack.len - needle.len; i >= 0; i--
+		for var j = 0; j < needle.len; j++
+			if haystack[i + j] != needle[j]
+				goto next
+			;;
+		;;
+		-> `std.Some i
+:next
+	;;
+	-> `std.None
+}
+
+const strhas = {haystack, needle
+	match strfind(haystack, needle)
+	| `Some _:	-> true
+	| `None:	-> false
+	;;
+}

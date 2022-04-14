@@ -1,0 +1,136 @@
+testdeps = 
+	../testr:testr
+	../math:math
+;;
+
+lib std =
+	lib @/:region
+
+	# portable files
+	alloc.myr
+	assert.myr
+	bigint.myr
+	bitset.myr
+	blat.myr
+	bytealloc.myr
+	chartype.myr
+	chomp.myr
+	clear.myr
+	cmp.myr
+	consts.myr
+	cstrconv.myr
+	die.myr
+	diriter.myr
+	dirname.myr
+	endian.myr
+	errno.myr
+	execvp.myr
+	extremum.myr
+	fltbits.myr
+	fltfmt.myr
+	fltparse.myr
+	fmtfuncs.myr
+        fmt.myr
+	fndup.myr
+	getcwd.myr
+	getint.myr
+	hashfuncs.myr
+	hasprefix.myr
+	hassuffix.myr
+	htab.myr
+	intfmt.myr
+	intparse.myr
+	introspect.myr
+	ipparse.myr
+	mk.myr
+	mkpath.myr
+	mktemp.myr
+	netaddr.myr
+	now.myr
+	option.myr
+	optparse.myr
+	pathjoin.myr
+	putint.myr
+	rand.myr
+	readall.myr
+	result.myr
+	search.myr
+	sjlj-impl+plan9-x64.s
+	sjlj-impl+posixy-x64.s
+	sjlj+x64.myr
+	slcp.myr
+	sldup.myr
+	sleep.myr
+	sleq.myr
+	slfill.myr
+	sljoin.myr
+	slpop.myr
+	slpush.myr
+	slput.myr
+	slurp.myr
+	sort.myr
+	spork.myr
+	strbuf.myr
+	strfind.myr
+	striter.myr
+	strjoin.myr
+	strreplace.myr
+	strsplit.myr
+	strstrip.myr
+	swap.myr
+	threadhooks.myr
+	traits.myr
+	try.myr
+	types.myr
+	units.myr
+	utf.myr
+	varargs.myr
+	writeall.myr
+
+	pledge.myr
+	pledge+openbsd.myr
+
+	# asm optimizations
+	memops.myr
+	memops-impl.myr
+	memops-impl+posixy-x64.s
+	memops-impl+plan9-x64.s
+
+
+	# arch specific files
+	backtrace+x64.myr
+	getbp+posixy-x64.s
+	getbp+plan9-x64.s
+
+	# platform specific files
+	dial+plan9.myr
+	dial+posixy.myr
+	dialparse+posixy.myr
+	dir+freebsd.myr
+	dir+linux.myr
+	dir+openbsd.myr
+	dir+netbsd.myr
+	dir+osx.myr
+	dir+plan9.myr
+	env+plan9.myr
+	env+posixy.myr
+	errno+plan9.myr
+	listen+posixy.myr
+	listen+plan9.myr
+	resolve+plan9.myr
+	resolve+posixy.myr
+	wait+plan9.myr
+	wait+posixy.myr
+
+	# relatively generic syscall wrappers
+	syswrap+plan9.myr
+	syswrap+posixy.myr
+
+	# system-specific syscall wrappers
+	syswrap-ss+linux.myr
+	syswrap-ss+netbsd.myr
+	syswrap-ss+openbsd.myr
+	syswrap-ss+osx.myr
+	syswrap-ss+plan9.myr
+	syswrap-ss+freebsd.myr
+;;

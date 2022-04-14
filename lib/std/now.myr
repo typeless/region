@@ -1,0 +1,11 @@
+use "types"
+use "syswrap"
+
+pkg std =
+	const now	: (-> time)
+;;
+
+/* microseconds since epoch */
+const now = {
+	-> curtime()
+}

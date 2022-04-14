@@ -1,0 +1,26 @@
+use crypto
+use std
+use testr
+
+var buf : byte[128*1024*1024]
+
+const main = {
+	for var i = 0; i < buf.len; i++
+		buf[i] = (i : byte)
+	;;
+	testr.bench([
+		[.name="sha1-1kb", .fn={ctx; hash(std.KiB)}],
+		[.name="sha1-1mb", .fn={ctx; hash(std.MiB)}],
+		[.name="sha1-16mb", .fn={ctx; hash(16*std.MiB)}],
+		[.name="sha1-128mb", .fn={ctx; hash(128*std.MiB)}],
+	][:])
+}
+
+const hash = {len
+	var st
+
+	crypto.sha1init(&st)
+	crypto.sha1add(&st, buf[:len])
+	crypto.sha1fin(&st)
+}
+

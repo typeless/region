@@ -1,0 +1,69 @@
+use sys
+use region
+
+pkg layer =
+	type batch(@s) :: region.layer @s
+	impl region.layer batch(@s) :: region.layer @s
+;;
+
+type batch(@s) :: region.layer @s = struct
+	super	: @s
+	allocslist : allocslist#
+;;
+
+type allocentry = struct
+	ptr	: byte#
+	sz	: sys.size
+;;
+
+generic Maxentries = (4096 - sizeof(allocslist#)) / sizeof(allocentry)
+
+type allocslist = struct
+	next		: allocslist#
+	nentries	: sys.size
+	entries		: allocentry[Maxentries]
+;;
+
+impl region.layer batch(@s) :: region.layer @s =
+	init = {
+		var a : batch(@s)
+		a.super = region.init()
+		a.allocslist = (0 : allocslist#)
+		-> a
+	}
+	deinit = {a
+		var bl = a.allocslist
+		while bl != (0 : allocslist#)
+			var p : allocslist#
+			for var i = 0; i < bl.nentries; i++
+				var e = bl.entries[i]
+				region.put(&a.super, e.ptr, e.sz)
+			;;
+			p = bl
+			bl = bl.next
+			region.put(&a.super, (p : byte#), sizeof(allocslist))
+		;;
+		a.allocslist = (0 : allocslist#)
+		region.deinit(&a.super)
+	}
+	get = {a, sz
+		var p : byte#
+
+		// assert(a.allocslist.nentries <= layer.Maxentries)
+		if a.allocslist == (0 : allocslist#) || a.allocslist.nentries == layer.Maxentries
+			var bl = (region.get(&a.super, sizeof(allocslist)) : allocslist#)
+			bl.next = a.allocslist
+			bl.nentries = 0
+			a.allocslist = bl
+		;;
+
+		p = region.get(&a.super, sz)
+
+		a.allocslist.entries[a.allocslist.nentries].ptr = p
+		a.allocslist.entries[a.allocslist.nentries].sz = sz
+		a.allocslist.nentries++
+
+		-> p
+	}
+	put = {a, p, sz;}
+;;

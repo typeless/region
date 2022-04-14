@@ -1,0 +1,78 @@
+use sys
+
+use "alloc"
+use "blat"
+use "cstrconv"
+use "die"
+use "extremum"
+use "fmt"
+use "option"
+use "result"
+use "slcp"
+use "sldup"
+use "sleq"
+use "slpush"
+use "slurp"
+use "threadhooks"
+use "traits"
+
+
+pkg std =
+	const getenv	: (name : byte[:] -> option(byte[:]))
+	const getenvv	: (name : byte[:], default : byte[:] -> byte[:])
+	const setenv	: (name : byte[:], val : byte[:] -> void)
+;;
+
+var envkey 	: byte[:][:]
+var envval	: byte[:][:]
+
+const envfind = {key
+	lock(envlck)
+	for var i = 0; i < envkey.len; i++
+		if std.eq(envkey[i], key)
+			unlock(envlck)
+			-> `Some envval[i]
+		;;
+	;;
+	unlock(envlck)
+	-> `None
+}
+
+const getenv = {name
+	var s, ret
+
+	match envfind(name)
+	| `Some val:
+		ret = `Some val
+	| `None:
+		s = fmt("/env/{}", name)
+		match std.slurp(s)
+		| `Err m: 
+			ret = `None
+		| `Ok data:
+			data = cstrconv(data)
+			lock(envlck)
+			slpush(&envkey, sldup(data))
+			slpush(&envval, data)
+			unlock(envlck)
+			ret = `Some data
+		;;
+		std.slfree(s)
+	;;
+	-> ret
+}
+
+const getenvv = {name, default
+	match getenv(name)
+	| `Some val:	-> val
+	| `None:	-> default
+	;;
+}
+
+const setenv = {name, val
+	var p
+
+	p = fmt("/env/{}", name)
+	blat(p, val, 0o644)
+	slfree(p)
+}

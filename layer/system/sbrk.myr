@@ -1,0 +1,36 @@
+use sys
+use region
+
+pkg layer =
+	type sbrk
+	impl region.layer sbrk
+;;
+
+type sbrk = struct
+	cur	: void#
+	count	: sys.size
+;;
+
+impl region.layer sbrk =
+	init = {
+		var a = [ .cur = (0 : void#), .count = 0 ]
+		var cur = sys.brk(0)
+		a.cur = (cur : void#)
+		-> a
+	}
+	deinit = {a
+		var p = (a.cur : sys.intptr) - (a.count : sys.intptr)
+		sys.brk((p : uint64))
+	}
+	get = {a, sz
+		var next = (a.cur : sys.intptr) + (sz : sys.intptr)
+		if sys.brk((next : uint64)) == (next : int64)
+			var p = a.cur
+			a.cur = (next : void#)
+			a.count += sz
+			-> (p : byte#)
+		;;
+		-> (0 : byte#)
+	}
+	put = {a, p, sz;}
+;;

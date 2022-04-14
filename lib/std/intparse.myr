@@ -1,0 +1,73 @@
+use "chartype"
+use "die"
+use "hasprefix"
+use "option"
+use "striter"
+use "types"
+use "utf"
+
+pkg std =
+	generic intparsebase	: (s : byte[:], base : int -> option(@a)) :: integral,numeric @a
+	generic intparse	: (s : byte[:]	-> option(@a)) ::  integral,numeric @a
+;;
+
+generic intparse = {s
+	var isneg 
+
+
+	isneg = false
+	if hasprefix(s, "-")
+		s = s[1:]
+		isneg = true
+	;;
+	if s.len == 0
+		-> `None
+	;;
+
+	if hasprefix(s, "0x")
+		-> doparse(s[2:], isneg, 16)
+	elif hasprefix(s, "0o")
+		-> doparse(s[2:], isneg, 8)
+	elif hasprefix(s, "0b")
+		-> doparse(s[2:], isneg, 2)
+	else
+		-> doparse(s, isneg, 10)
+	;;
+}
+
+generic intparsebase = {s, base
+	var isneg 
+
+	isneg = false
+	if hasprefix(s, "-")
+		s = s[1:]
+		isneg = true
+	;;
+
+	-> doparse(s, isneg, base)
+}
+
+generic doparse = {s, isneg, base ->  option(@a) :: integral,numeric @a
+	var v
+	var cv : int32
+	
+	v = 0
+	for c : std.bychar(s)
+		if c == '_'
+			continue
+		;;
+		cv = charval(c, base)
+		if cv >= 0
+			v *= (base : @a)
+			v += (cv : @a)
+		else
+			-> `None
+		;;
+	;;
+
+	if isneg
+		-> `Some -v
+	else
+		-> `Some v
+	;;
+}

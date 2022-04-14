@@ -1,0 +1,46 @@
+use "result"
+use "option"
+use "fmt"
+
+pkg std =
+	generic try	: (v : result(@a, @b) -> @a)
+	generic tryv	: (v : result(@a, @b), d : @a -> @a)
+	generic get	: (v : option(@a) -> @a)
+	generic getv	: (v : option(@a), d : @a -> @a)
+	generic canget	: (o : option(@a) -> bool)
+;;
+
+generic try = {v
+	match v
+	| `Ok x:	-> x
+	| `Err m:	fatal("error: {}\n", m)
+	;;
+}
+
+generic tryv = {v, d
+	match v
+	| `Ok x:	-> x
+	| `Err m:	-> d
+	;;
+}
+
+generic canget = {o
+	match o
+	| `None: -> false
+	| `Some _: -> true
+	;;
+}
+
+generic get = {v
+	match v
+	| `Some x:	-> x
+	| `None:	fatal("error: option had `None\n")
+	;;
+}
+
+generic getv = {v, d
+	match v
+	| `Some x:	-> x
+	| `None:	-> d
+	;;
+}

@@ -1,0 +1,36 @@
+use "syswrap"
+use "result"
+
+pkg std =
+	const blat : (path : byte[:], buf : byte[:], perm : int64 -> bool)
+	const fblat : (f : fd, buf : byte[:] -> bool)
+;;
+
+const blat = {path, buf, perm
+	match openmode(path, Ocreat|Owrite, perm)
+	| `Ok fd:
+		var r = fblat(fd, buf)
+		close(fd)
+		-> r
+	| `Err e:
+		-> false
+	;;
+}
+
+
+const fblat = {fd, buf
+	var count
+
+	count = 0
+	while true
+		match write(fd, buf[count:])
+		| `Err e:	-> false
+		| `Ok n:
+			if n == 0
+				break
+			;;
+			count += n
+		;;
+	;;
+	-> count == buf.len
+}

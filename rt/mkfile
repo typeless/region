@@ -1,0 +1,18 @@
+</$objtype/mkfile
+
+all:V: _myrrt.$O
+
+_myrrt.$O: _myrrt-plan9.s
+	$AS -o _myrrt.$O _myrrt-plan9.s
+
+install:V: all
+	mkdir -p /$objtype/lib/myr
+	cp _myrrt.$O /$objtype/lib/myr
+
+uninstall:V:
+	rm -f /$objtype/lib/myr/_myrrt.$O
+
+clean:V:
+	rm -f _myrrt.$O
+
+nuke:V: clean

@@ -1,0 +1,19 @@
+use std
+use testr
+
+const main = {
+	testr.bench([
+		[.name="fill-sort", .fn={ctx; benchsort()}]
+	][:])
+}
+
+const benchsort = {
+	var a, i
+
+	a = std.slalloc(500_000)
+	for i = 0; i < a.len; i++
+		a[i] = std.randnum()
+	;;
+	std.sort(a, std.numcmp)
+	std.slfree(a)
+}

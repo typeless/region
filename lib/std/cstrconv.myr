@@ -1,0 +1,35 @@
+use "types"
+
+pkg std =
+	const cstrlen	: (buf : byte[:] -> size)
+	const cstrconv	: (buf : byte[:] -> byte[:])
+	const cstrconvp	: (p : byte# -> byte[:])
+;;
+
+const cstrconv = {buf
+	for var i = 0; i < buf.len; i++
+		if buf[i] == 0
+			-> buf[:i]
+		;;
+	;;
+	-> buf
+}
+
+const cstrconvp = {p
+	var len
+
+	len = 1
+	while p[:len][len -1] != 0
+		len++
+	;;
+	-> p[:len-1]
+}
+
+const cstrlen = {buf
+	for var i = 0; i < buf.len; i++
+		if buf[i] == 0
+			-> i
+		;;
+	;;
+	-> 0
+}

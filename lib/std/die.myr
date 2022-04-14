@@ -1,0 +1,18 @@
+use "syswrap"
+use "types"
+
+pkg std = 
+	$noret const die	: (msg : byte[:] -> void)
+	pkglocal const iassert	: (cond : bool, msg : byte[:] -> void)
+;;
+
+const die = {msg
+	write(2, msg)
+	suicide()
+}
+
+const iassert = {cond, msg
+	if !cond
+		die(msg)
+	;;
+}

@@ -1,0 +1,108 @@
+use "alloc"
+use "die"
+use "extremum"
+use "slcp"
+use "types"
+use "utf"
+use "memops"
+
+pkg std =
+	type strbuf = struct
+		buf	: byte[:]
+		len	: size
+		fixed	: bool
+	;;
+
+	const mksb	: (-> strbuf#)
+	const mkbufsb	: (buf : byte[:] -> strbuf#)
+	const sbfin	: (sb : strbuf# -> byte[:])
+	const sbfree	: (sb : strbuf# -> void)
+	const sbpeek	: (sb : strbuf# -> byte[:])
+
+	const sbputc	: (sb : strbuf#, v : char -> bool)
+	const sbputs	: (sb : strbuf#, v : byte[:] -> bool)
+	const sbputb	: (sb : strbuf#, v : byte -> bool)
+	const sbtrim	: (sb : strbuf#, len : size -> void)
+;;
+
+const mksb = {
+	var sb
+	sb = zalloc()
+	sb.buf = slalloc(1)
+	-> sb
+}
+
+const mkbufsb = {buf
+	var sb
+
+	sb = zalloc()
+	sb.buf = buf
+	sb.fixed = true
+	-> sb
+}
+
+const sbfin = {sb
+	var sl
+
+	sl = sb.buf[:sb.len]
+	free(sb)
+	-> sl
+}
+
+const sbfree = {sb
+	if !sb.fixed
+		slfree(sb.buf)
+	;;
+	free(sb)
+}
+
+
+const sbpeek = {sb : strbuf#
+	-> sb.buf[:sb.len]
+}
+
+const sbputc = {sb, v
+	if !ensure(sb, charlen(v))
+		-> false
+	;;
+	sb.len += encode(sb.buf[sb.len:], v)
+	-> true
+}
+const sbputs = {sb, v
+	var ok
+	var len
+
+	ok = ensure(sb, v.len)
+	/* copy what we can */
+	len = min(sb.buf.len - sb.len, v.len)
+	slcp(sb.buf[sb.len:sb.len + len], v[:len])
+	sb.len += len
+	-> ok
+}
+const sbputb = {sb, v
+	if !ensure(sb, 1)
+		-> false
+	;;
+	sb.buf[sb.len++] = v
+	-> true
+}
+
+const sbtrim = {sb, len
+	len = min(sb.len, len)
+	if len < 0
+		sb.len -= abs(len)
+	else
+		sb.len = len
+	;;
+}
+
+const ensure = {sb, len
+	if sb.fixed && sb.len + len > sb.buf.len
+		-> false
+	;;
+	while sb.buf.len < sb.len + len
+		slgrow(&sb.buf, 2*sb.buf.len)
+	;;
+	-> true
+}
+

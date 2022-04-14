@@ -1,0 +1,221 @@
+use "alloc"
+use "die"
+use "extremum"
+use "fmt"
+use "sleq"
+use "option"
+use "slpush"
+use "strbuf"
+use "syswrap"
+use "syswrap-ss"
+use "traits"
+use "types"
+use "utf"
+
+pkg std =
+	type optdef = struct
+		argdesc	: byte[:]	/* the description for the usage */
+		minargs	: std.size	/* the minimum number of positional args */
+		maxargs	: std.size	/* the maximum number of positional args (0 = unlimited) */
+		noargs	: std.bool	/* whether we accept args at all */
+		opts	: optdesc[:]	/* the description of the options */
+	;;
+
+	type optdesc = struct
+		opt	: char
+		arg	: byte[:]
+		desc	: byte[:]
+		dest	: std.option(byte[:]#)
+		optional	: bool
+	;;
+
+	type optparsed = struct
+		opts	: (char, byte[:])[:]
+		args	: byte[:][:]
+		prog	: byte[:]
+	;;
+
+	const optparse	: (optargs : byte[:][:], def : optdef# -> optparsed)
+	const optusage	: (prog : byte[:], def : optdef# -> void)
+;;
+
+type optctx = struct
+	/* public variables */
+	args	: byte[:][:]
+
+	/* data passed in */
+	optdef	: optdef#
+	optargs	: byte[:][:]
+
+	/* state */
+	argidx	: size
+	curarg	: byte[:]
+	optdone	: bool	/* if we've seen '--', everything's an arg */
+	finished	: bool	/* if we've processed all the optargs */
+;;
+
+
+const optparse = {args, def
+	var ctx : optctx
+	var parsed
+
+	parsed = [
+		.opts=[][:],
+		.args=[][:],
+		.prog=args[0]
+	]
+	optinit(&ctx, args, def)
+	while !optdone(&ctx)
+		slpush(&parsed.opts, optnext(&ctx))
+	;;
+	if ctx.args.len < def.minargs
+		put("error: expected at least {} args, got {}\n", def.minargs, ctx.args.len)
+		optusage(ctx.optargs[0], ctx.optdef)
+		exit(1)
+	;;
+	if def.maxargs > 0 && ctx.args.len > def.maxargs
+		put("error: expected at most {} args, got {}\n", def.maxargs, ctx.args.len)
+		optusage(ctx.optargs[0], ctx.optdef)
+		exit(1)
+	;;
+	if def.noargs && ctx.args.len != 0
+		put("error: expected no args, got {}\n", ctx.args.len)
+		optusage(ctx.optargs[0], ctx.optdef)
+		exit(1)
+	;;
+	parsed.args = ctx.args
+	-> parsed
+}
+
+const optinit = {ctx, args, def
+	ctx# = [
+		.optargs = args,
+		.optdef = def,
+		.optdone = false,
+		.finished = false,
+		.argidx = 0,
+		.curarg = [][:],
+		.args = [][:],
+	]
+
+	next(ctx)
+	-> ctx
+}
+
+const optnext = {ctx
+	var c
+	var arg
+
+	(c, ctx.curarg) = charstep(ctx.curarg)
+
+	match optinfo(ctx, c)
+	| `None:
+		if c == 'h' || c == '?'
+			optusage(ctx.optargs[0], ctx.optdef)
+			exit(0)
+		else
+			put("Unexpected argument '{}'\n", c)
+			optusage(ctx.optargs[0], ctx.optdef)
+			exit(1)
+		;;
+	| `Some (true, needed, dest):
+		/* -arg => '-a' 'rg' */
+		if ctx.curarg.len > 0
+			arg = ctx.curarg
+			ctx.curarg = ctx.curarg[ctx.curarg.len:]
+			next(ctx)
+		/* '-a rg' => '-a' 'rg' */
+		elif ctx.argidx < (ctx.optargs.len - 1)
+			arg = ctx.optargs[ctx.argidx + 1]
+			ctx.argidx++
+			next(ctx)
+		elif needed
+			put("Expected argument for '{}'\n", c)
+			optusage(ctx.optargs[0], ctx.optdef)
+			exit(1)
+		;;
+		match dest
+		| `std.Some d:	d# = arg
+		| `std.None:	/* nothing */
+		;;
+	| `Some (false, _, _):
+		arg = ""
+		if ctx.curarg.len == 0
+			next(ctx)
+		;;
+	;;
+
+
+	-> (c, arg)
+}
+
+const optdone = {ctx
+	-> ctx.curarg.len == 0 && ctx.finished
+}
+
+const optinfo = {ctx, opt
+	for o : ctx.optdef.opts
+		if o.opt == opt
+			-> `Some (o.arg.len != 0, !o.optional, o.dest)
+		;;
+	;;
+	-> `None
+}
+
+const next = {ctx
+	var i
+
+	for i = ctx.argidx + 1; i < ctx.optargs.len; i++
+		if !ctx.optdone && decode(ctx.optargs[i]) == '-'
+			if eq(ctx.optargs[i], "--")
+				ctx.optdone = true
+			else
+				goto foundopt
+			;;
+		else
+			slpush(&ctx.args, ctx.optargs[i])
+		;;
+	;;
+:finishedopt
+	ctx.finished = true
+	-> false
+:foundopt
+	ctx.argidx = i
+	ctx.curarg = ctx.optargs[i][1:]
+	-> true
+}
+
+const optusage = {prog, def
+	var sb, s
+
+	sb = mksb()
+	std.sbfmt(sb, "usage: {} [-h?", prog)
+	for o : def.opts
+		if o.arg.len == 0
+			std.sbfmt(sb, "{}", o.opt)
+		;;
+	;;
+	std.sbfmt(sb, "] ")
+	for o : def.opts
+		if o.arg.len != 0
+			std.sbfmt(sb, "[-{} {}] ", o.opt, o.arg)
+		;;
+	;;
+	std.sbfmt(sb, "{}\n", def.argdesc)
+	std.sbfmt(sb, "\t-h\tprint this help message\n")
+	std.sbfmt(sb, "\t-?\tprint this help message\n")
+	for o : def.opts
+		std.sbfmt(sb, "\t-{}{}{}\t{}\n", o.opt, sep(o.arg), o.arg, o.desc)
+	;;
+	s = sbfin(sb)
+	write(1, s)
+	slfree(s)
+}
+
+const sep = {s
+	if s.len > 0
+		-> " "
+	else
+		-> ""
+	;;
+}

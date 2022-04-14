@@ -1,0 +1,577 @@
+use sys
+use "alloc"
+use "chartype"
+use "die"
+use "endian"
+use "extremum"
+use "hashfuncs"
+use "htab"
+use "ipparse"
+use "now"
+use "option"
+use "result"
+use "slcp"
+use "sldup"
+use "sleq"
+use "slpush"
+use "slurp"
+use "strfind"
+use "strsplit"
+use "strstrip"
+use "threadhooks"
+use "types"
+use "utf"
+
+pkg std =
+	type rectype = union
+		`DnsA		/* host address */
+		`DnsNS		/* authoritative name server */
+		`DnsCNAME	/* canonical name for an alias */
+		`DnsSOA		/* marks the start of a zone of authority */
+		`DnsWKS		/* well known service description */
+		`DnsPTR		/* domain name pointer */
+		`DnsHINFO	/* host information */
+		`DnsMINFO	/* mailbox or mail list information */
+		`DnsMX		/* mail exchange */
+		`DnsTXT		/* text strings */
+		`DnsAAAA	/* ipv6 host address */
+		`DnsInval	/* invalid */
+	;;
+
+	type resolveerr = union
+		`Timeout
+		`Badconn
+		`Badhost
+		`Badsrv
+		`Badquery
+		`Badresp
+	;;
+
+	type hostinfo = struct
+		fam	: sys.sockfam
+		stype	: sys.socktype
+		ttl	: uint32
+		addr	: netaddr
+		stale	: time
+		rtype	: rectype
+	;;
+
+	const resolve		: (host : byte[:]	-> result(hostinfo[:], resolveerr))
+	const resolvemx		: (host : byte[:]	-> result(hostinfo[:], resolveerr))
+	const resolverec	: (host : byte[:], t : rectype[:]	-> result(hostinfo[:], resolveerr))
+
+;;
+
+const Hostfile = "/etc/hosts"
+const Resolvfile = "/etc/resolv.conf"
+const Timeout = 2_000
+const Maxns = 5
+
+var initdone	: bool = false
+var hostmap	: htab(byte[:], hostinfo)#
+var dnscache	: htab(byte[:], hostinfo)#
+var search	: byte[:][:]
+var nameservers	: netaddr[:]
+
+const resolve = {host
+	/*TODO: v4 and v6 */
+	-> resolverec(host, [`DnsA, `DnsAAAA][:])
+}
+
+const resolvemx = {host
+	-> resolverec(host, [`DnsMX][:])
+}
+
+const resolverec = {host, tl
+	if !initdone /*  avoid extra contention */
+		lock(netlck)
+		if !initdone
+			hostmap = mkht()
+			dnscache = mkht()
+			loadhosts()
+			loadresolv()
+			initdone = true
+		;;
+		unlock(netlck)
+	;;
+
+	for t : tl
+		match findhost(host, rectype(t))
+		| `Some hinf:
+			-> `Ok sldup([hinf][:])
+		| `None:
+			-> dnsresolve(host, rectype(t))
+		;;
+	;;
+	-> `Err `Badquery
+}
+
+const findhost = {host, t
+	var h
+	lock(netlck)
+	match htget(dnscache, host)
+	| `std.Some inf:
+		if rectype(inf.rtype) != t
+			h = `std.None
+		elif inf.stale > std.now()
+			h = `std.Some inf
+		else
+			h = htget(hostmap, host)
+		;;
+	| `std.None:
+		h = htget(hostmap, host)
+	;;
+	unlock(netlck)
+	-> h
+}
+
+const loadhosts = {
+	var h
+	var lines
+
+	match slurp(Hostfile)
+	| `Ok d:	h = d
+	| `Err m:	-> void
+	;;
+
+	lines = strsplit(h, "\n")
+	for l : lines
+		/* trim comment */
+		match strfind(l, "#")
+		| `Some idx:	l = l[:idx]
+		| `None:	/* whole line */
+		;;
+
+		match word(l)
+		| `Some (ip, rest):
+			match ipparse(ip)
+			| `Some addr:
+				addhosts(addr, ip, rest)
+			| `None:
+				/*
+				invalid addresses are ignored: we don't want to break stuff
+				with invalid or unsupported addresses
+				*/
+
+			;;
+		| `None:
+		;;
+	;;
+	slfree(lines)
+	slfree(h)
+}
+
+const addhosts = {addr, as, str
+	var hinf
+	var fam
+
+	match addr
+	| `Ipv4 _:	fam = sys.Afinet
+	| `Ipv6 _:	fam = sys.Afinet6
+	;;
+	while true
+		match word(str)
+		| `Some (name, rest):
+			str = rest
+			if hthas(hostmap, name)
+				continue
+			;;
+			hinf = [
+				.fam=fam,
+				.stype = 0,
+				.ttl = 0,
+				.addr = addr
+			]
+			htput(hostmap, sldup(name), hinf)
+		| `None:
+			-> void
+		;;
+	;;
+}
+
+const loadresolv = {
+	var h
+	var lines
+
+	match slurp(Resolvfile)
+	| `Ok d:	h = d
+	| `Err m:	-> void
+	;;
+
+	lines = strsplit(h, "\n")
+	for l : lines
+		match strfind(l, "#")
+		| `Some _idx: l = l[:_idx]
+		| `None:
+		;;
+
+		match word(l)
+		| `Some ("nameserver", srv):
+			addns(srv)
+		| `Some (_, rest):
+			/* invalid or unrecognized commands */
+		| `None:
+			/* unrecognized lines */
+		;;
+	;;
+	slfree(lines)
+	slfree(h)
+}
+
+const addns = {rest
+	match word(rest)
+	| `Some (name, _):
+		match ipparse(name)
+		| `Some addr:
+			slpush(&nameservers, addr)
+		| `None:
+			/* nothing */
+		;;
+	| `None:
+		/* nothing */
+	;;
+}
+
+const word = {s
+	var c, len
+
+	len = 0
+	s = strfstrip(s)
+	for c = decode(s[len:]); c != Badchar && !isblank(c); c = decode(s[len:])
+		len += charlen(c)
+	;;
+	if len == 0
+		-> `None
+	else
+		-> `Some (s[:len], s[len:])
+	;;
+}
+
+const dnsresolve = {host, rt
+	var srv : sys.pollfd[Maxns]
+	var ret, fd, cutoff
+
+	if !valid(host)
+		-> `Err (`Badhost)
+	;;
+
+	cutoff = std.min(Maxns, nameservers.len)
+	for var i = 0; i < cutoff; i++
+		fd=dnsconnect(nameservers[i])
+		if fd != -1
+			srv[i] = [
+				.fd=fd,
+				.events=sys.Pollout,
+				.revents=0,
+			]
+		;;
+	;;
+
+	ret = dnsquery(srv[:cutoff], host, rt)
+
+	for s : srv[:cutoff]
+		sys.close(s.fd)
+	;;
+
+	-> ret
+}
+
+const dnsconnect = {ns
+	var sa4 : sys.sockaddr_in
+	var sa6 : sys.sockaddr_in6
+	var sa	: sys.sockaddr#
+	var sock, sz
+	var status
+
+	match ns
+	| `Ipv4 bits:
+		sa4=[.fam=sys.Afinet, .addr=bits, .port=hosttonet(53)]
+		sa = (&sa4 : sys.sockaddr#)
+		sz = sizeof(sys.sockaddr_in)
+	| `Ipv6 bits:
+		sa6=[.fam=sys.Afinet6, .addr=bits, .port=hosttonet(53)]
+		sa = (&sa6 : sys.sockaddr#)
+		sz = sizeof(sys.sockaddr_in6)
+	;;
+
+	sock = sys.socket(sa.fam, sys.Sockdgram, 0)
+	if sock < 0
+		-> -1
+	;;
+
+	status = sys.connect(sock, sa, sz)
+	if status < 0
+		sys.close(sock)
+		-> -1
+	;;
+
+	-> sock
+}
+
+const dnsquery = {srv, host, t
+	var pkt : byte[512] /* big enough */
+	var id : uint16[Maxns]
+	var query
+	var fail
+	var giveup
+
+	fail = 0
+	giveup = now() + 1000*Timeout
+
+	while true
+		/* all failed */
+		if fail == srv.len
+			break
+		;;
+
+		var r = sys.poll(srv, (giveup - std.now() : int)/1000)
+		if r < 0
+			-> `Err `Badconn
+		elif r == 0
+			-> `Err `Timeout
+		;;
+
+		for var i = 0; i < srv.len; i++
+			var s = &srv[i]
+
+			if (s.revents & sys.Pollout) != 0
+				(id[i], query) = mkquery(host, t)
+				sys.write(s.fd, query)
+				s.events = sys.Pollin
+			elif (s.revents & sys.Pollin) != 0
+				var n = sys.read(s.fd, pkt[:])
+				if n < 0
+					-> `Err `Badconn
+				;;
+
+				var inf = hosts(pkt[:n], host, id[i])
+				match inf
+				| `std.Err `Badresp:
+					/* continue polling */
+				| _:
+					-> inf
+				;;
+			else
+				fail++
+			;;
+		;;
+	;;
+
+	-> `Err (`Badsrv)
+}
+
+const Qr : uint16 = 1 << 0
+const Aa : uint16 = 1 << 5
+const Tc : uint16 = 1 << 6
+const Rd : uint16 = 1 << 7
+const Ra : uint16 = 1 << 8
+
+var nextid : uint16 = 42
+const mkquery = {host, t
+	var pkt : byte[512] /* big enough */
+	var off : size
+
+	/* header */
+	off = 0
+	nextid++
+	off += pack16(pkt[:], off, nextid)	/* id */
+	off += pack16(pkt[:], off, Ra)	/* flags */
+	off += pack16(pkt[:], off, 1)	/* qdcount */
+	off += pack16(pkt[:], off, 0)	/* ancount */
+	off += pack16(pkt[:], off, 0)	/* nscount */
+	off += pack16(pkt[:], off, 0)	/* arcount */
+
+	/* query */
+	off += packname(pkt[:], off, host)	/* host */
+	off += pack16(pkt[:], off, (t : uint16)) /* qtype: a record */
+	off += pack16(pkt[:], off, 0x1) /* qclass: inet4 */
+
+	-> (nextid, pkt[:off])
+}
+
+const hosts = {pkt, host, id
+	var off, ni
+	var r, n, q, a, t, ttl
+	var hinf : hostinfo[:]
+	var v6dat : byte[16]
+
+	off = 0
+	/* parse header */
+	(r, off) = unpack16(pkt, off)	/* id */
+	if r != id
+		-> `Err `Badresp
+	;;
+	(_, off) = unpack16(pkt, off)	/* flags */
+	(q, off) = unpack16(pkt, off)	/* qdcount */
+	(a, off) = unpack16(pkt, off)	/* ancount */
+	(_, off) = unpack16(pkt, off)	/* nscount */
+	(_, off) = unpack16(pkt, off)	/* arcount */
+
+	/* skip past query records */
+	for var i = 0; i < q; i++
+		off = skipname(pkt, off)	/* name */
+		(_, off) = unpack16(pkt, off)	/* type */
+		(_, off) = unpack16(pkt, off)	/* class */
+	;;
+
+	/* parse answer records */
+	ni = 0
+	hinf = slalloc((a : size))
+	for var i = 0; i < a; i++
+		off = skipname(pkt, off)	/* name */
+		(t, off) = unpack16(pkt, off)	/* type */
+		(_, off) = unpack16(pkt, off)	/* class */
+		(ttl, off) = unpack32(pkt, off)	/* ttl */
+		(n, off) = unpack16(pkt, off)	/* rdatalen */
+
+		hinf[ni].ttl = ttl
+		hinf[ni].stale = (ttl * 1_000_000 : time) + std.now()
+		hinf[ni].rtype = id2type(t)
+		match hinf[ni].rtype
+		| `DnsA:
+			/* the thing we're interested in: our IP address */
+			hinf[ni].addr = `Ipv4 [pkt[off], pkt[off+1], pkt[off+2], pkt[off+3]]
+			off += 4;
+			ni++
+		| `DnsAAAA:
+			std.slcp(v6dat[:], pkt[off:off+16])
+			hinf[ni].addr = `Ipv6 v6dat
+			off += 16
+			ni++
+		| _:
+			off += (n : std.size)
+		;;
+	;;
+	lock(netlck)
+	if ni != 0 && hinf[0].ttl != 0
+		std.htput(dnscache, std.sldup(host), hinf[0])
+	;;
+	unlock(netlck)
+	-> `Ok hinf[:ni]
+}
+
+
+const skipname = {pkt, off
+	var sz
+
+	for sz = (pkt[off] : size); sz != 0; sz = (pkt[off] : size)
+		/* ptr is 2 bytes */
+		if sz & 0xC0 == 0xC0
+			-> off + 2
+		else
+			off += sz + 1
+		;;
+	;;
+	-> off + 1
+}
+
+
+const pack16 = {buf, off, v
+	buf[off]	= ((v & 0xff00) >> 8 : byte)
+	buf[off+1]	= ((v & 0x00ff) >> 0 : byte)
+	-> sizeof(uint16) /* we always write one uint16 */
+}
+
+const unpack16 = {buf, off
+	var v
+
+	v = 0
+	v |= (buf[off + 0] : uint16) << 8
+	v |= (buf[off + 1] : uint16) << 0
+	-> (v, off+sizeof(uint16))
+}
+
+const unpack32 = {buf, off
+	var v
+
+	v = (buf[off] : uint32) << 24
+	v |= (buf[off+1] : uint32) << 32
+	v |= (buf[off+2] : uint32) << 8
+	v |= (buf[off+3] : uint32)
+	-> (v, off+sizeof(uint32))
+}
+
+const packname = {buf, off : size, host
+	var start
+	var last
+
+	start = off
+	last = 0
+	for var i = 0; i < host.len; i++
+		if host[i] == ('.' : byte)
+			off += addseg(buf, off, host[last:i])
+			last = i + 1
+		;;
+	;;
+	if host[host.len - 1] != ('.' : byte)
+		off += addseg(buf, off, host[last:])
+	;;
+	off += addseg(buf, off, "") /* null terminating segment */
+	-> off - start
+}
+
+const addseg = {buf, off, str
+	buf[off] = (str.len : byte)
+	slcp(buf[off + 1 : off + str.len + 1], str)
+	-> str.len + 1
+}
+
+const valid = {host : byte[:]
+	var i
+	var seglen
+
+	/* maximum length: 255 chars */
+	if host.len > 255
+		-> false
+	;;
+
+	seglen = 0
+	for i = 0; i < host.len; i++
+		if host[i] == ('.' : byte)
+			seglen = 0
+		;;
+		if seglen > 63
+			-> false
+		;;
+		if host[i] & 0x80 != 0
+			-> false
+		;;
+	;;
+
+	-> true
+}
+
+const id2type = {rtype
+	match rtype
+	| 1:	-> `DnsA
+	| 2:	-> `DnsNS
+	| 5:	-> `DnsCNAME
+	| 6:	-> `DnsSOA
+	| 11:	-> `DnsWKS
+	| 12:	-> `DnsPTR
+	| 13:	-> `DnsHINFO
+	| 14:	-> `DnsMINFO
+	| 15:	-> `DnsMX
+	| 16:	-> `DnsTXT
+	| 28:	-> `DnsAAAA
+	| _:	-> `DnsInval
+	;;
+}
+
+const rectype = {rtype
+	match rtype
+	| `DnsA:	-> 1  /* host address */
+	| `DnsNS:	-> 2  /* authoritative name server */
+	| `DnsCNAME:	-> 5  /* canonical name for an alias */
+	| `DnsSOA:	-> 6  /* marks the start of a zone of authority */
+	| `DnsWKS:	-> 11 /* well known service description */
+	| `DnsPTR:	-> 12 /* domain name pointer */
+	| `DnsHINFO:	-> 13 /* host information */
+	| `DnsMINFO:	-> 14 /* mailbox or mail list information */
+	| `DnsMX:	-> 15 /* mail exchange */
+	| `DnsTXT:	-> 16 /* text strings */
+	| `DnsAAAA:	-> 28 /* ipv6 host address */
+	| `DnsInval:	-> -1
+	;;
+}
+

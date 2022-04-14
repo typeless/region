@@ -1,0 +1,64 @@
+use sys
+use region
+
+use "die"
+use "extremum"
+use "memops"
+use "syswrap"
+use "threadhooks"
+use "types"
+use "units"
+use "result"
+use "slfill"
+use "backtrace"
+
+pkg std =
+	//const startalloctrace	: (f : byte[:] -> void)
+	//const endalloctrace	: (-> void)
+
+	const bytealloc		: (sz:size -> byte#)
+	const zbytealloc	: (sz:size -> byte#)
+	const bytefree		: (m:byte#, sz:size -> void)
+
+	/* null pointers. only used internally. */
+	pkglocal const Zslicep	= (0 : byte#)
+	pkglocal const Align	= (16 : size) /* minimum allocation alignment */
+
+	pkglocal const align	: (m : std.size, align : std.size -> std.size)
+	pkglocal const allocsz	: (sz : std.size -> std.size)
+
+;;
+
+const Pagesz	= 4*KiB
+
+/*FIXME Without this, ld will refuse to link. Don't know why.*/
+const __init__ = {;}
+
+const zbytealloc = {sz
+	var p
+
+	p = bytealloc(sz)
+	memfill(p, 0, sz)
+	-> p
+}
+
+const bytealloc = {sz : size -> byte#
+	-> region.bytealloc((sz : sys.size))
+}
+
+const bytefree = {p : byte#, sz : size
+	-> region.bytefree(p, (sz : sys.size))
+}
+
+const allocsz = {sz : size -> size
+	/*FIXME is this correct? */
+	-> align(sz, Align)
+}
+
+/*
+aligns a size to a requested alignment.
+'align' must be a power of two
+*/
+const align = {v, align
+	-> (v + align - 1) & ~(align - 1)
+}

@@ -1,0 +1,67 @@
+use std
+use region
+use layer
+use sys /*FIXME without this, ld couldn't find namespace 'sys' */
+
+type foo = struct
+	data : byte[20]
+	len  : std.size
+	link : foo#
+;;
+
+//var a0 : layer.bumpheap(layer.stdheap(void), byte[103])
+//var a0 : layer.logged(layer.checked(layer.bumpheap(layer.mmap, byte[8192])))
+var a0 : layer.chunk(layer.batch(layer.stats(layer.mmap)), byte[4096])
+//var a0 : layer.logged(layer.mmap)
+//var a0 : layer.bumpheap(layer.mmap, byte[103])
+var a1 : layer.chunk(layer.batch(layer.mmap), byte[4096])
+
+const main = {
+	var x : foo#
+
+	a0 = region.init()
+	x = (region.get(&a0, sizeof(foo)) : foo#)
+
+	x.data[0] = 100
+	x.data[1] = 122
+	x.len = 123
+	std.put("{}, {}\n", x.data, x.len)
+	std.put("a27:{}\n", &a0)
+	var y : byte
+	y = region.enter(&a0, {
+		var g : foo#
+		g = (region.bytealloc(sizeof(foo)) : foo#)
+		g.data[0] = 201
+		std.put("this is in a region0, top={}\n", region.top())
+		std.put("g={}, {}\n", g.data, g.len)
+		a1 = region.init()
+		region.enter(&a1, {
+			var h : foo#
+			std.put("this is in a region1, top={}\n", region.top())
+			h = (region.bytealloc(sizeof(foo)) : foo#)
+			h.data[0] = 234
+			g.link = region.alloc()
+			std.put("g={} g.link = {}\n", g, g.link)
+			std.put("h={}, {}\n", h.data, h.len)
+		})
+		std.put("g={} g.link = {}\n", g, g.link)
+
+		a1 = region.init()
+		g# = region.enter(&a1, {
+			var h : foo#
+			std.put("this is in a region1, top={}\n", region.top())
+			h = region.alloc()
+			h.data[0] = 234
+			h.link = region.alloc()
+			std.put("h={}, {}\n", h.data, h.len)
+			-> h#
+		})
+
+		var ccc : int# = region.alloc()
+
+		std.put("g={}, {}\n", g#, g.len)
+		-> g.data[0]
+	})
+	std.put("y={}\n", y)
+	std.put("a0={}\n", a0)
+}

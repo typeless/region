@@ -1,0 +1,107 @@
+use "die"
+use "alloc"
+use "env"
+use "errno"
+use "fmt"
+use "option"
+use "pathjoin"
+use "memops"
+use "rand"
+use "result"
+use "sldup"
+use "syswrap"
+use "types"
+
+pkg std =
+	const mktemp		: (base : byte[:], opt : fdopt, mode : int64 -> std.result((fd, byte[:]), errno))
+	const mktempat		: (dir : byte[:], base : byte[:], opt : fdopt, mode : int64 -> std.result((fd, byte[:]), errno))
+	const mkdtemp		: (base : byte[:], mode : int64 -> std.result(byte[:], errno))
+	const mkdtempat		: (dir : byte[:], base : byte[:], mode : int64 -> std.result(byte[:], errno))
+	const mktemppath	: (base : byte[:] -> byte[:])
+;;
+
+const Retries = 100
+
+const mktemp = {base, opt, mode
+	var tmpdir
+
+	match std.getenv("TMPDIR")
+	| `std.Some d:	tmpdir = d
+	| `std.None:	tmpdir = "/tmp"
+	;;
+	
+	-> mktempat(tmpdir, base, opt, mode)
+	
+}
+
+const mktempat = {tmpdir, base, opt, mode
+	var path
+
+	for var i = 0; i < Retries; i++
+		path = randpath(tmpdir, base)
+		match std.openmode(path, opt | Ocreat, mode)
+		| `Err e:
+			if e != Eexist
+				std.slfree(path)
+				-> `Err e
+			;;
+		| `Ok fd:
+			-> `Ok (fd, path)
+		;;
+		std.slfree(path)
+	;;
+	-> `Err Eexist
+}
+
+const mkdtemp = {base, mode
+	var tmpdir
+
+	match std.getenv("TMPDIR")
+	| `std.Some d:	tmpdir = d
+	| `std.None:	tmpdir = "/tmp"
+	;;
+
+	-> mkdtempat(tmpdir, base, mode)
+}
+
+const mkdtempat = {tmpdir, base, mode
+	var path
+
+	for var i = 0; i < Retries; i++
+		path = randpath(tmpdir, base)
+		match std.mkdir(path, mode)
+		| Enone:
+			-> `Ok path
+		| e:
+			if e != Eexist
+				std.slfree(path)
+				-> `Err e
+			;;
+		;;
+		std.slfree(path)
+	;;
+	-> `Err Eexist
+}
+
+const mktemppath = {base
+	var tmpdir, path
+
+	match std.getenv("TMPDIR")
+	| `std.Some d:	tmpdir = d
+	| `std.None:	tmpdir = "/tmp"
+	;;
+
+	path = randpath(tmpdir, base)
+	-> path
+}
+
+const randpath = {dir, base
+	var f, p
+	var v : uint64
+
+	v = std.randnum()
+	f = fmt("{}{}", base, v)
+	p = pathcat(dir, f)
+	std.slfree(f)
+	-> p
+}

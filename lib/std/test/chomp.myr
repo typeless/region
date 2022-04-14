@@ -1,0 +1,16 @@
+use std
+
+const main = {
+	check("aaab", "aaa", "b")
+	check("aaa", "aaa", "")
+	check("aa", "aaa", "aa")
+}
+
+const check = {sl, pfx, expected
+	var r
+
+	r = sl
+	std.chomp(&r, pfx)
+	std.assert(std.eq(r, expected), \
+		"expected chomp({}, {}) => {}, got {}\n", sl, pfx, expected, r)
+}

@@ -1,0 +1,53 @@
+use "types"
+
+pkg std =
+	pkglocal const memblit	: (dst : byte#, src : byte#, len : std.size -> void)
+	pkglocal const memfill	: (dst : byte#, val : byte, len : std.size -> void)
+	pkglocal const memeq	: (a : byte#, b : byte#, len : std.size -> bool)
+;;
+
+
+const memblit = {dst, src, len
+	var sa, da
+	var s, d
+
+	da = (dst : intptr)
+	sa = (src : intptr)
+	d = dst[:len]
+	s = src[:len]
+
+	if da == sa
+		-> void
+	elif da < sa
+		for var i = 0; i < d.len; i++
+			d[i] = s[i]
+		;;
+	else
+		for var i = d.len; i > 0; i--
+			d[i - 1] = s[i - 1]
+		;;
+	;;
+}
+
+const memfill = {dst, val, len
+	var d
+
+	d = dst[:len]
+	for var i = 0; i < d.len; i++
+		d[i] = val
+	;;
+}
+
+const memeq = {a, b, len
+	var sa, sb
+
+	sa = a[:len]
+	sb = b[:len]
+	for i = 0; i < len; i++
+		if sa[i] != sb[i]
+			-> false
+		;;
+	;;
+	-> true
+}
+

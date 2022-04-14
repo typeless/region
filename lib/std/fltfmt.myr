@@ -1,0 +1,373 @@
+use "alloc"
+use "bigint"
+use "die"
+use "extremum"
+use "fltbits"
+use "intfmt"
+use "option"
+use "slpush"
+use "strbuf"
+use "types"
+use "utf"
+use "memops"
+
+pkg std =
+	pkglocal const MNormal	= 0
+	pkglocal const MAbsolute = 1
+	pkglocal const MRelative = 2
+
+	pkglocal type fltparams = struct
+		mode		: int
+		cutoff		: size
+		scientific	: bool
+		padto		: size
+		padfill		: char
+	;;
+
+	pkglocal const flt64bfmt	: (sb : strbuf#, opts : fltparams, val : flt64 -> void)
+	pkglocal const flt32bfmt	: (sb : strbuf#, opts : fltparams, val : flt32 -> void)
+;;
+
+const Dblbias = 1023
+const Fltbias = 127
+
+const flt64bfmt = {sb, opts, val
+	var isneg, exp, mant
+
+	if isnan(val)
+		-> nanfmt(sb, opts)
+	;;
+
+	(isneg, exp, mant) = flt64explode(val)
+
+	if exp > Dblbias
+		-> inffmt(sb, opts, isneg)
+	;;
+
+	var valsb = mksb()
+
+	exp = max(exp, 1 - Dblbias)
+	dragon4(valsb, false, mant, exp - 52, Dblbias, opts.mode, -opts.cutoff, opts.scientific)
+
+	-> blobfmt(sb, sbfin(valsb), opts, isneg)
+}
+
+const flt32bfmt = {sb, opts, val
+	var isneg, exp, mant
+
+	if isnan(val)
+		-> nanfmt(sb, opts)
+	;;
+
+	(isneg, exp, mant) = flt32explode(val)
+
+	if (exp : int64) > Fltbias
+		-> inffmt(sb, opts, isneg)
+	;;
+
+	var valsb = mksb()
+
+	exp = (max((exp : int64), 1 - Fltbias) : int32)
+	dragon4(valsb, false, (mant : uint64), (exp - 23 : int64), Fltbias, opts.mode, -opts.cutoff, opts.scientific)
+
+	-> blobfmt(sb, sbfin(valsb), opts, isneg)
+}
+
+const nanfmt = {sb, opts
+	var npad = clamp(opts.padto - 3, 0, opts.padto)
+
+	for var j = 0; j < npad; j++
+		sbputc(sb, opts.padfill)
+	;;
+
+	sbputs(sb, "NaN")
+}
+
+const inffmt = {sb, opts, isneg
+	var s = "Inf"
+	var l = 3
+
+	if isneg
+		s = "-Inf"
+		l = 4
+	;;
+
+	var npad = clamp(opts.padto - l, 0, opts.padto)
+
+	for var j = 0; j < npad; j++
+		sbputc(sb, opts.padfill)
+	;;
+
+	sbputs(sb, s)
+}
+
+const blobfmt = {sb, blob, opts, isneg
+	/* No exotic characters, so no need for strcellwidth */
+	var width = blob.len
+
+	if isneg
+		width++
+	;;
+
+	var npad = clamp(opts.padto - width, 0, opts.padto)
+
+	if opts.padfill == '0' && isneg
+		sbputb(sb, ('-' : byte))
+	;;
+	for var j = 0; j < npad; j++
+		sbputc(sb, opts.padfill)
+	;;
+	if opts.padfill != '0' && isneg
+		sbputb(sb, ('-' : byte))
+	;;
+
+	sbputs(sb, blob)
+}
+
+/*
+sb: output buffer
+e: exponent
+p: precision
+f: mantissa
+
+floating value: x = f^(e - p)
+*/
+const dragon4 = {sb, isneg, f, e, p, mode, cutoff, scientific
+	var r, s, t, u, v, y
+	var udig
+	var mm, mp	/* margins above and below */
+	var roundup
+	var low, high
+	var k
+	var tenpower : int64 = 0
+	var a, i
+
+	if isneg
+		sbputs(sb, "-")
+	;;
+	/* if we have zero for the mantissa, we can return early */
+	if f == 0
+		sbputs(sb, "0.0")
+		if scientific
+			sbputs(sb, "e0")
+		;;
+		-> void
+	;;
+
+	/* initialize */
+	roundup = false
+	low = false
+	high = false
+	u = mkbigint(0)
+	r = bigshli(mkbigint(f), max(e, 0))
+	s = bigshli(mkbigint(1), max(0, -e))
+	mm = bigshli(mkbigint(1), max(e, 0))
+	mp = bigdup(mm)
+
+	/* fixup: unequal gaps */
+	t = mkbigint(1)
+	bigshli(t, p - 1)
+	if bigeqi(t, f)
+		bigshli(mp, 1)
+		bigshli(r, 1)
+		bigshli(s, 1)
+	;;
+	bigfree(t)
+
+	k = 0
+	while true
+		/* r < ceil(s/b) */
+		t = bigdup(s)
+		bigaddi(t, 9)
+		bigdivi(t, 10)
+		match bigcmp(r, t)
+		| `Before:
+			k--
+			bigmuli(r, 10)
+			bigmuli(mm, 10)
+			bigmuli(mp, 10)
+		| _:
+			bigfree(t)
+			break
+		;;
+		bigfree(t)
+	;;
+
+	while true
+		t = bigdup(r)
+		bigshli(t, 1)
+		bigadd(t, mp)
+		while true
+			u = bigdup(s)
+			bigshli(u, 1)
+			match bigcmp(t, u)
+			| `Before:
+				bigfree(u)
+				break
+			| _:
+				k++
+				bigmuli(s, 10)
+				bigfree(u)
+			;;
+		;;
+
+		if mode == MNormal
+			cutoff = k
+		else
+			if mode == MRelative
+				if cutoff >= 0
+					cutoff = -1
+				;;
+				cutoff += k
+			;;
+			a = cutoff - k
+
+			/* common between relative and absolute */
+			y = bigdup(s)
+			if a > 0
+				for i = 0; i < a; i++
+					bigmuli(y, 10)
+				;;
+			else
+				for i = 0; i < -a; i++
+					bigaddi(y, 9)
+					bigdivi(y, 10)
+				;;
+			;;
+			match bigcmp(y, mm)
+			| `Before:	/* nothing */
+			| _:
+				bigfree(mm)
+				mm = bigdup(y)
+			;;
+			match bigcmp(y, mp)
+			| `Before:	/* nothing */
+			| _:
+				bigfree(mp)
+				mp = bigdup(y)
+				roundup = true
+
+				/* recalculate 2*R + M+ for the loop termination */
+				bigfree(t)
+				t = bigdup(r)
+				bigshli(t, 1)
+				bigadd(t, mp)
+			;;
+			bigfree(y)
+		;;
+
+		u = bigdup(s)
+		bigshli(u, 1)
+		match bigcmp(t, u)
+		| `Before:
+			bigfree(t)
+			bigfree(u)
+			break
+		| _:
+		;;
+	;;
+
+	if scientific
+		tenpower = (k - 1 : int64)
+		cutoff += (1 - k)
+		k = 1
+	;;
+
+	if k <= 0
+		sbputs(sb, "0.")
+		for var i = 0; i < -k; i++
+			sbputs(sb, "0")
+		;;
+	;;
+	while true
+		k--
+
+		bigmuli(r, 10)
+		u = bigdup(r);
+		bigdiv(u, s)
+
+		bigmod(r, s)
+		bigmuli(mm, 10)
+		bigmuli(mp, 10)
+
+		low = false
+		t = bigdup(r)
+		bigshli(t, 1)
+		match bigcmp(t, mm)
+		| `Before:	low = true
+		| _:
+		;;
+		bigfree(t)
+
+		/* v = 2*r */
+		v = bigdup(r)
+		bigshli(v, 1)
+
+		/* t = 2*s - mp */
+		t = bigdup(s)
+		bigshli(t, 1)
+		bigsub(t, mp)
+
+		match bigcmp(v, t)
+		| `Before: high = false;
+		| `Equal: high = roundup;
+		| `After: high = true;
+		;;
+		bigfree(v)
+		bigfree(t)
+		if low || high || k == cutoff
+			break
+		;;
+		format(sb, lowdig(u), k)
+		bigfree(u)
+	;;
+
+	/* format the last digit */
+	udig = lowdig(u)
+	if low && !high
+		format(sb, udig, k)
+	elif high && !low
+		format(sb, udig + 1, k)
+	else
+		bigmuli(r, 2)
+		match bigcmp(r, s)
+		| `Before:	format(sb, udig, k)
+		| `Equal:	format(sb, udig, k)
+		| `After:	format(sb, udig + 1, k)
+		;;
+	;;
+	k--
+	if !scientific && cutoff > -1
+		cutoff = -1
+	;;
+	while k >= cutoff
+		format(sb, 0, k--)
+	;;
+
+	if scientific
+		sbputs(sb, "e")
+		intfmt(sb, [ .base = 10 ], true, (tenpower : uint64), 64)
+	;;
+
+	bigfree(u)
+	bigfree(r)
+	bigfree(s)
+	bigfree(mm)
+	bigfree(mp)
+}
+
+const lowdig = {u
+	if u.dig.len > 0
+		-> u.dig[0]
+	;;
+	-> 0
+}
+
+const format = {sb, d, k
+	const dig = "0123456789"
+
+	sbputb(sb, dig[d])
+	if k == 0
+		sbputs(sb, ".")
+	;;
+}

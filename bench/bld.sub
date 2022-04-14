@@ -1,0 +1,33 @@
+bench hashit =
+	hashit.myr
+	lib ../lib/std:std
+;;
+bench intsort =
+	intsort.myr
+	lib ../lib/std:std
+;;
+bench copious-allocs =
+	copious-allocs.myr
+	lib ../lib/std:std
+;;
+bench sha1-compute =
+	sha1-compute.myr
+	lib ../lib/std:std
+;;
+bench bigint =
+	bigint.myr
+	lib ../lib/std:std
+;;
+bench mandelbrot =
+	mandelbrot.myr
+	lib ../lib/std:std
+;;
+bench regex-match =
+	regex-match.myr
+	lib ../lib/std:std
+;;
+
+bench many-memcpy =
+	many-memcpy.myr
+	lib ../lib/std:std
+;;
