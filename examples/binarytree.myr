@@ -9,7 +9,7 @@ type node = struct
 
 const bottom_up_tree = {depth : int -> node#
 	if depth <= 0
-		-> std.zalloc()
+		-> std.mk([.left = (0 : node#), .right = (0 : node#)])
 	;;
 	-> std.mk([.left = bottom_up_tree(depth-1), .right = bottom_up_tree(depth-1)])
 }
@@ -22,6 +22,9 @@ const itemcheck = {n : node# -> int
 }
 
 const mindepth = 4
+
+var r1 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.mmap))), byte[4096]))
+var r2 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.mmap))), byte[4096]))
 
 const main = {args : byte[:][:]
 	var maxdepth
@@ -45,19 +48,28 @@ const main = {args : byte[:][:]
 
 	var stretchdepth = maxdepth + 1
 
-	var check = itemcheck(bottom_up_tree(stretchdepth))
+	r1 = region.init()
+	var check = region.enter(&r1, {
+		-> itemcheck(bottom_up_tree(stretchdepth))
+	})
 	std.put("stretch tree of depth {}\t check: {}\n", stretchdepth, check)
 
-	var longlivedtree = bottom_up_tree(maxdepth)
+	r1 = region.init()
+	region.enter(&r1, {
+		var longlivedtree = bottom_up_tree(maxdepth)
 
-	for var depth = mindepth; depth <= maxdepth; depth += 2	
-		var iterations = 1 << (maxdepth - depth + mindepth)
-		check = 0
+		for var depth = mindepth; depth <= maxdepth; depth += 2
+			var iterations = 1 << (maxdepth - depth + mindepth)
+			check = 0
 
-		for var i = 1; 1 < iterations; i++
-			check += itemcheck(bottom_up_tree(depth))
+			for var i = 1; i <= iterations; i++
+				r2 = region.init()
+				check += region.enter(&r2, {
+					-> itemcheck(bottom_up_tree(depth))
+				})
+			;;
+			std.put("{}\t trees of depth {}\t check: {}\n", iterations, depth, check)
 		;;
-		std.put("{}\t trees of depth {}\t check: {}\n", iterations, depth, check)
-	;;
-	std.put("long lived tree of depth {}\t check: {}\n", maxdepth, itemcheck(longlivedtree))
+		std.put("long lived tree of depth {}\t check: {}\n", maxdepth, itemcheck(longlivedtree))
+	})
 }
