@@ -10,6 +10,12 @@ bin nested =
 	lib @/:region
 ;;
 
+bin binarytree =
+	binarytree.myr
+	lib @/layer:layer
+	lib @/:region
+;;
+
 sub =
 	json/
 ;;

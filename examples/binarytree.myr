@@ -1,0 +1,63 @@
+use std
+use layer
+use region
+
+type node = struct
+	left	: node#
+	right	: node#
+;;
+
+const bottom_up_tree = {depth : int -> node#
+	if depth <= 0
+		-> std.zalloc()
+	;;
+	-> std.mk([.left = bottom_up_tree(depth-1), .right = bottom_up_tree(depth-1)])
+}
+
+const itemcheck = {n : node# -> int
+	if n.left == (0 : node#)
+		-> 1
+	;;
+	-> 1 + itemcheck(n.left) + itemcheck(n.right)
+}
+
+const mindepth = 4
+
+const main = {args : byte[:][:]
+	var maxdepth
+
+	if args.len < 2
+		std.put("need depth arg\n")
+		std.exit(1)
+	;;
+
+	match std.intparse(args[1])
+	| `std.Some n:
+		maxdepth = n
+	| `std.None:
+		std.put("invalid depth arg\n")
+		std.exit(1)
+	;;
+
+	if mindepth + 2 > maxdepth
+		maxdepth = mindepth + 2
+	;;
+
+	var stretchdepth = maxdepth + 1
+
+	var check = itemcheck(bottom_up_tree(stretchdepth))
+	std.put("stretch tree of depth {}\t check: {}\n", stretchdepth, check)
+
+	var longlivedtree = bottom_up_tree(maxdepth)
+
+	for var depth = mindepth; depth <= maxdepth; depth += 2	
+		var iterations = 1 << (maxdepth - depth + mindepth)
+		check = 0
+
+		for var i = 1; 1 < iterations; i++
+			check += itemcheck(bottom_up_tree(depth))
+		;;
+		std.put("{}\t trees of depth {}\t check: {}\n", iterations, depth, check)
+	;;
+	std.put("long lived tree of depth {}\t check: {}\n", maxdepth, itemcheck(longlivedtree))
+}
