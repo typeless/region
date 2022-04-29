@@ -1,15 +1,15 @@
 use region
 
 pkg layer =
-	type bypass(@s)
-	impl region.layer bypass(@s)
+	type bypass(@s) :: region.layer @s
+	impl region.layer bypass(@s) :: region.layer @s
 ;;
 
 type bypass(@s) = struct
 	super : @s
 ;;
 
-impl region.layer bypass(@s) =
+impl region.layer bypass(@s) :: region.layer @s =
 	init = {
 		var a : bypass(@s)
 		a.super = region.init()
