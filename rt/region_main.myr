@@ -2,13 +2,16 @@ use layer
 use region
 use sys
 
-extern const main : (args : byte[:][:] -> void)
-extern const __init__ : (-> void)
-extern const __fini__ : (-> void)
+pkg rt =
+	const region_main : (args : byte[:][:] -> void)
+;;
 
 const region_main = {args
-	//var a0 : layer.bonwick
-	var a0 : layer.chunk(layer.batch(layer.mmap), byte[4096])
+	extern const main : (args : byte[:][:] -> void)
+	extern const __init__ : (-> void)
+	extern const __fini__ : (-> void)
+
+	var a0 : layer.bonwick(layer.check(layer.stats(layer.mmap)))
 
 	a0 = region.init()
 	region.enter(&a0, {

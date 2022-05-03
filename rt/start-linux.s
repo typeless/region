@@ -48,7 +48,7 @@ _start:
 	syscall
 
 	xorq %rbp,%rbp
-	call	region_main
+	call	rt$region_main
 
 	/* exit(0) */
 	xorq	%rdi,%rdi
