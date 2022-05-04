@@ -105,7 +105,7 @@ impl region.layer bonwick(@s) :: region.layer @s =
 		if p == (0 : byte#)
 			-> void
 		;;
-		if (sz < layer.Bktmax)
+		if (sz <= layer.Bktmax)
 			bkt = &a.buckets[layer.bktnum(sz)]
 			layer.bktfree(a, bkt, p)
 		else
