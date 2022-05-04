@@ -168,6 +168,7 @@ $ make clean
 $ make
 $ ./obj/examples/append
 $ ./obj/examples/json/jsonparse
+$ ./obj/examples/binarytree 21
 ```
 
 ## Tests
