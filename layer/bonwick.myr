@@ -4,11 +4,12 @@ use region
 use "die"
 
 pkg layer =
-	type bonwick
-	impl region.layer bonwick
+	type bonwick(@s) :: region.layer @s
+	impl region.layer bonwick(@s) :: region.layer @s
 ;;
 
-type bonwick = struct
+type bonwick(@s) :: region.layer @s = struct
+	super	: @s
 	buckets	: bucket[32] /* excessive */
 	trace	: bool
 	tracefd	: sys.fd
@@ -56,45 +57,64 @@ const Cachemax	= 4
 const Bktmax	= 128*KiB	/* a balance between wasted space and falling back to mmap */
 const Pagesz	= 4*KiB
 
-impl region.layer bonwick =
+impl region.layer bonwick(@s) :: region.layer @s =
 	init = {
-		var a : bonwick
+		var a : bonwick(@s)
 
-		for var i = 0; i < a.buckets.len && (Align << i) <= Bktmax; i++
-			bktinit(&a.buckets[i], Align << i)
+		a.super = region.init()
+
+		for var i = 0; i < a.buckets.len && (layer.Align << i) <= layer.Bktmax; i++
+			layer.bktinit(&a.buckets[i], layer.Align << i)
 		;;
 
 		-> a
 	}
 	deinit = {a
+		for var i = 0; i < a.buckets.len && (layer.Align << i) <= layer.Bktmax; i++
+			var s = a.buckets[i].slabs
+			while s != layer.Zslab
+				var next = s.next
+				region.put(&a.super, s.head, layer.Slabsz*2)
+				s = next
+			;;
+
+			s = a.buckets[i].cache
+			while s != layer.Zslab
+				var next = s.next
+				region.put(&a.super, s.head, layer.Slabsz*2)
+				s = next
+			;;
+		;;
+
+		region.deinit(&a.super)
 	}
-	get = {a, sz
+	get = {a, sz : sys.size -> byte#
 		var bkt, p
 
-		if sz <= Bktmax
-			bkt = &a.buckets[bktnum(sz)]
-			p = bktalloc(bkt)
+		if sz <= layer.Bktmax
+			bkt = &a.buckets[layer.bktnum(sz)]
+			p = layer.bktalloc(a, bkt)
 		else
-			p = bigalloc(a, sz)
+			p = layer.bigalloc(a, sz)
 		;;
 		-> p
 	}
-	put = {a, p, sz
+	put = {a, p : byte#, sz : sys.size
 		var bkt
 
 		if p == (0 : byte#)
 			-> void
 		;;
-		if (sz < Bktmax)
-			bkt = &a.buckets[bktnum(sz)]
-			bktfree(a, bkt, p)
+		if (sz < layer.Bktmax)
+			bkt = &a.buckets[layer.bktnum(sz)]
+			layer.bktfree(a, bkt, p)
 		else
-			bigfree(a, p, sz)
+			layer.bigfree(a, p, sz)
 		;;
 	}
 ;;
 
-const bigalloc = {a, sz
+generic bigalloc = {a, sz
 	var p
 
 	p = Failmem
@@ -126,14 +146,14 @@ const bigalloc = {a, sz
 	;;
 
 	/* ok, lets give up and get memory from the os */
-	p = getmem(sz)
-	if p != Failmem
+	p = region.get(&a.super, sz)
+	if p != (0 : byte#)
 		-> p
 	;;
 	die("could not get memory\n")
 }
 
-const bigfree = {a, p, sz
+generic bigfree = {a, p, sz
 	var evictsz, evictp, evictidx
 	var endp, endblk
 
@@ -177,13 +197,13 @@ const bigfree = {a, p, sz
 	  we don't need the lock held.
 	 */
 	if evictsz > 0
-		freemem(evictp, evictsz)
+		region.put(&a.super, evictp, evictsz)
 	;;
 }
 
 /* Sets up a single empty bucket */
 const bktinit = {b, sz
-	b.sz = align(sz, Align)
+	b.sz = align(sz, layer.Align)
 	b.nper = (Slabsz - sizeof(slab))/b.sz
 	b.slabs = Zslab
 	b.cache = Zslab
@@ -191,7 +211,7 @@ const bktinit = {b, sz
 }
 
 /* Creates a slab for bucket 'bkt', and fills the chunk list */
-const mkslab = {bkt
+generic mkslab = {a, bkt
 	var p, s
 	var b, bnext
 	var off /* offset of chunk head */
@@ -212,8 +232,8 @@ const mkslab = {bkt
 	going to have issues with running out of address space for a
 	while. On a 32 bit system this would be a bad idea.
 	*/
-	p = getmem(Slabsz*2)
-	if p == Failmem
+	p = region.get(&a.super, Slabsz*2)
+	if p == (0 : byte#)
 		die("Unable to get memory")
 	;;
 
@@ -225,7 +245,7 @@ const mkslab = {bkt
 	s.prev = Zslab
 	s.magic = 0xfee1baff1ed
 	/* skip past the slab header */
-	off = align(sizeof(slab), Align)
+	off = align(sizeof(slab), layer.Align)
 	bnext = nextchunk((s : chunk#), off)
 	s.freehd = bnext
 	for var i = 0; i < bkt.nper; i++
@@ -242,13 +262,13 @@ Allocates a node from bucket 'bkt', crashing if the
 allocation cannot be satisfied. Will create a new slab
 if there are no slabs on the freelist.
 */
-const bktalloc = {bkt
+generic bktalloc = {a : bonwick(@s)#, bkt -> byte#
 	var s, c
 
 	/* find a slab */
 	s = bkt.slabs
 	if s == Zslab
-		s = mkslab(bkt)
+		s = mkslab(a, bkt)
 		bkt.slabs = s
 		if s == Zslab
 			die("No memory left")
@@ -274,7 +294,7 @@ Assumes that the memory already came from a slab
 that was created for bucket 'bkt'. Will crash
 if this is not the case.
 */
-const bktfree = {a, bkt, m
+generic bktfree = {a : bonwick(@s)#, bkt, m
 	var s, c
 
 	s = (mtrunc(m, Slabsz) : slab#)
@@ -310,7 +330,7 @@ const bktfree = {a, bkt, m
 		else
 			/* we mapped 2*Slabsz so we could align it,
 			 so we need to unmap the same */
-			freemem(s.head, Slabsz*2)
+			region.put(&a.super, s.head, Slabsz*2)
 		;;
 		-> void
 	;;
@@ -348,7 +368,7 @@ size request
 const allocsz = {sz
 	var bktsz
 
-	if sz <= Bktmax
+	if sz <= layer.Bktmax
 		bktsz = Align
 		for var i = 0; bktsz <= Bktmax; i++
 			if bktsz >= sz
@@ -385,12 +405,6 @@ be a power of two.
 const mtrunc = {m, align
 	-> ((m : sys.intptr) & ~((align : sys.intptr) - 1) : byte#)
 }
-
-const getmem	= {sz;
-	sz = (sz + 4095) & ~4095
-	-> sys.mmap((0 : byte#), (sz : sys.size), sys.Mprotrw, sys.Mpriv | sys.Manon, -1, 0)
-}
-const freemem	= {p, sz;	sys.munmap(p, (sz : sys.size))}
 
 const iassert = {cond, msg
 	if !cond
