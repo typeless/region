@@ -132,6 +132,19 @@ Records the counts and sizes of allocations/deallocations.
 
 Check if every allocation is deallocated. If not, abort the program.
 
+#### Pipe Layer
+`type pipe`
+
+`pipe` redirects all requests from the upper layers to the lower (enclosing) region.
+The layer does not take any parameter and is used as a *bottom* layer.
+
+#### Ground Layer
+`type ground`
+
+Like the `pipe` layer, but it redirects requests all the way down to the *ground* region.
+The layer does not take any parameter and is used as a *bottom* layer.
+
+
 ## Gauge
 ```
 trait gauge @g =
