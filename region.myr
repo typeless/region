@@ -25,9 +25,6 @@ pkg region =
 	const bytealloc		: (sz : sys.size -> byte#)
 	const bytefree		: (p : byte#, sz : sys.size -> void)
 
-	generic alloc		: ( -> @t#)
-	generic mk		: (v : @t -> @a#)
-
 	/* For debugging */
 	const top		: (-> region#)
 	const next		: (-> region#)
@@ -79,16 +76,4 @@ const bytealloc = {sz -> byte#
 
 const bytefree = {p, sz
 	__top__.bytefree(p, sz)
-}
-
-generic alloc = { -> @t#
-	var p : @t#
-	p = (__top__.bytealloc(sizeof(@t)) : @t#)
-	-> p
-}
-
-generic mk = {v
-	var p = region.alloc()
-	p# = v
-	-> p
 }

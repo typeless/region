@@ -40,7 +40,7 @@ const main = {
 			std.put("this is in a region1, top={}\n", region.top())
 			h = (region.bytealloc(sizeof(foo)) : foo#)
 			h.data[0] = 234
-			g.link = region.alloc()
+			g.link = std.alloc()
 			std.put("g={} g.link = {}\n", g, g.link)
 			std.put("h={}, {}\n", h.data, h.len)
 		})
@@ -50,14 +50,14 @@ const main = {
 		g# = region.enter(&a1, {
 			var h : foo#
 			std.put("this is in a region1, top={}\n", region.top())
-			h = region.alloc()
+			h = std.alloc()
 			h.data[0] = 234
-			h.link = region.alloc()
+			h.link = std.alloc()
 			std.put("h={}, {}\n", h.data, h.len)
 			-> h#
 		})
 
-		var ccc : int# = region.alloc()
+		var ccc : int# = std.alloc()
 
 		std.put("g={}, {}\n", g#, g.len)
 		-> g.data[0]
