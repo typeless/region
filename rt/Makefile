@@ -4,7 +4,7 @@ ASMSRC = start.s common.s abort.s
 all: _region_myrrt.o
 
 _region_myrrt.o: region_main.o _myrrt.o
-	ld -r -o _region_myrrt.o _myrrt.o region_main.o -L../obj/layer -llayer -L../obj -lregion -L/home/mural/src/myrlang.org/mc/out/lib/myr -lsys
+	ld -r -o _region_myrrt.o _myrrt.o region_main.o -L../obj/layer -llayer -L../obj -lregion
 
 include ./config.mk
 
