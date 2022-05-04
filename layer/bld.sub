@@ -6,7 +6,7 @@ lib layer =
 	null.myr
 	bypass.myr
 	check.myr
-	funnel.myr
+	pipe.myr
 	stats.myr
 
 	bonwick.myr

@@ -1,0 +1,28 @@
+use region
+use sys
+
+pkg layer =
+	type pipe
+	impl region.layer pipe
+;;
+
+type pipe = struct
+	next	: region.region#
+;;
+
+impl region.layer pipe =
+	init = {
+		var a : pipe
+		a.next = region.top()
+		-> a
+	}
+	deinit = {a
+	}
+	get = {a, sz
+		var next = a.next
+		-> a.next.bytealloc(sz)
+	}
+	put = {a, p, sz
+		a.next.bytefree(p, sz)
+	}
+;;
