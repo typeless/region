@@ -7,6 +7,7 @@ lib layer =
 	bypass.myr
 	check.myr
 	pipe.myr
+	ground.myr
 	stats.myr
 
 	bonwick.myr

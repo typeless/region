@@ -1,0 +1,33 @@
+use region
+use sys
+
+pkg layer =
+	type ground
+	impl region.layer ground
+;;
+
+type ground = struct
+	next	: region.region#
+;;
+
+impl region.layer ground =
+	init = {
+		var a : ground
+		var next = region.top()
+		/* we should have a way to locate the ground region without traversing the list */
+		while next.next != (0 : region.region#)
+			next = next.next
+		;;
+		a.next = next
+		-> a
+	}
+	deinit = {a
+	}
+	get = {a, sz
+		var next = a.next
+		-> a.next.bytealloc(sz)
+	}
+	put = {a, p, sz
+		a.next.bytefree(p, sz)
+	}
+;;
