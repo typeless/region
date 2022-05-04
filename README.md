@@ -106,7 +106,17 @@ Heap layers is inspired by https://github.com/emeryberger/Heap-Layers
 
 ### Top layers
 At the moment we provide three system layers: `sbrk`, `mmap`, and `std`.
-There is the `bonwick` layer as well, which is ported from the `std` library.
+There is the `bonwick` layer as well, which is ported from Myrddin's `std` library.
+
+#### Pipe Layer
+`type pipe`
+
+`pipe` redirects all requests from the upper layers to the next lower (enclosing) region.
+
+#### Ground Layer
+`type ground`
+
+Like the `pipe` layer, but it redirects requests all the way down to the *ground* region.
 
 ### Primitive layers
 #### Chunk Layer
@@ -131,19 +141,6 @@ Records the counts and sizes of allocations/deallocations.
 `type check(@super) :: region.layer, region.gauge @super`
 
 Check if every allocation is deallocated. If not, abort the program.
-
-#### Pipe Layer
-`type pipe`
-
-`pipe` redirects all requests from the upper layers to the lower (enclosing) region.
-The layer does not take any parameter and is used as a *bottom* layer.
-
-#### Ground Layer
-`type ground`
-
-Like the `pipe` layer, but it redirects requests all the way down to the *ground* region.
-The layer does not take any parameter and is used as a *bottom* layer.
-
 
 ## Gauge
 ```
