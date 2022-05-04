@@ -3,14 +3,14 @@ use "die"
 
 pkg layer =
 	type check(@s) :: region.layer, region.gauge @s
-	impl region.layer check(@s)
+	impl region.layer check(@s) :: region.layer @s
 ;;
 
 type check(@s) = struct
 	super : @s
 ;;
 
-impl region.layer check(@s) =
+impl region.layer check(@s) :: region.layer @s =
 	init = {
 		var a : check(@s)
 		a.super = region.init()

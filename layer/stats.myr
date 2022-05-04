@@ -3,11 +3,11 @@ use sys
 
 pkg layer =
 	type stats(@s) :: region.layer @s
-	impl region.layer stats(@s)
-	impl region.gauge stats(@s)
+	impl region.layer stats(@s) :: region.layer @s
+	impl region.gauge stats(@s) :: region.layer @s
 ;;
 
-type stats(@s) = struct
+type stats(@s) :: region.layer @s = struct
 	super		: @s
 	nalloc		: sys.size
 	nfree		: sys.size
@@ -16,7 +16,7 @@ type stats(@s) = struct
 	watermark	: sys.size
 ;;
 
-impl region.layer stats(@s) =
+impl region.layer stats(@s) :: region.layer @s =
 	init = {
 		var a : stats(@s)
 		a.nalloc = 0
@@ -45,7 +45,7 @@ impl region.layer stats(@s) =
 	}
 ;;
 
-impl region.gauge stats(@s) =
+impl region.gauge stats(@s) :: region.layer @s =
 	gauge = {a
 		-> (a.nalloc, a.nfree, a.szalloc, a.szfree, a.watermark)
 	}
