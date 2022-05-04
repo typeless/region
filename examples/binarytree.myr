@@ -23,8 +23,8 @@ const itemcheck = {n : node# -> int
 
 const mindepth = 4
 
-var r1 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.mmap))), byte[4096]))
-var r2 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.mmap))), byte[4096]))
+var r1 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.ground))), byte[64*1024]))
+var r2 : layer.stats(layer.chunk(layer.batch(layer.check(layer.stats(layer.ground))), byte[64*1024]))
 
 const main = {args : byte[:][:]
 	var maxdepth
@@ -72,4 +72,6 @@ const main = {args : byte[:][:]
 		;;
 		std.put("long lived tree of depth {}\t check: {}\n", maxdepth, itemcheck(longlivedtree))
 	})
+	std.put("r1={}\n", r1)
+	std.put("r2={}\n", r2)
 }
