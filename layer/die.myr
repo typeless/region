@@ -2,9 +2,16 @@ use sys
 
 pkg layer =
 	$noret const die : (s : byte[:] -> void)
+	const assert : (e : bool, s : byte[:] -> void)
 ;;
 
 $noret const die = {s : byte[:]
 	sys.write(2, s)
 	sys.kill(sys.getpid(), 6)
+}
+
+const assert = {e : bool, s : byte[:]
+	if !e
+		die(s)
+	;;
 }
