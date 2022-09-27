@@ -12,7 +12,7 @@ const main = {
 
 	std.put("outside region xs: {}@{}\n", xs, &xs)
 
-	xs = region.enter(&b, {
+	xs = region.enter({
 
 		var ys = std.slalloc(0)
 		for var i = 0; i < 5; i++
@@ -33,7 +33,7 @@ const main = {
 		})
 
 		-> xs
-	})
+	}, &b)
 
 	std.put("outside region xs: {}@{}\n", xs, &xs)
 	std.put("{}\n", b)

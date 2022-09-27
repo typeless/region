@@ -49,13 +49,13 @@ const main = {args : byte[:][:]
 	var stretchdepth = maxdepth + 1
 
 	r1 = region.init()
-	var check = region.enter(&r1, {
+	var check = region.enter({
 		-> itemcheck(bottom_up_tree(stretchdepth))
-	})
+	}, &r1)
 	std.put("stretch tree of depth {}\t check: {}\n", stretchdepth, check)
 
 	r1 = region.init()
-	region.enter(&r1, {
+	region.enter({
 		var longlivedtree = bottom_up_tree(maxdepth)
 
 		for var depth = mindepth; depth <= maxdepth; depth += 2
@@ -64,14 +64,14 @@ const main = {args : byte[:][:]
 
 			for var i = 1; i <= iterations; i++
 				r2 = region.init()
-				check += region.enter(&r2, {
+				check += region.enter({
 					-> itemcheck(bottom_up_tree(depth))
-				})
+				}, &r2)
 			;;
 			std.put("{}\t trees of depth {}\t check: {}\n", iterations, depth, check)
 		;;
 		std.put("long lived tree of depth {}\t check: {}\n", maxdepth, itemcheck(longlivedtree))
-	})
+	}, &r1)
 	std.put("r1={}\n", r1)
 	std.put("r2={}\n", r2)
 }

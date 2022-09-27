@@ -28,14 +28,14 @@ const main = {
 	std.put("{}, {}\n", x.data, x.len)
 	std.put("a27:{}\n", &a0)
 	var y : byte
-	y = region.enter(&a0, {
+	y = region.enter({
 		var g : foo#
 		g = (region.bytealloc(sizeof(foo)) : foo#)
 		g.data[0] = 201
 		std.put("this is in a region0, top={}\n", region.top())
 		std.put("g={}, {}\n", g.data, g.len)
 		a1 = region.init()
-		region.enter(&a1, {
+		region.enter({
 			var h : foo#
 			std.put("this is in a region1, top={}\n", region.top())
 			h = (region.bytealloc(sizeof(foo)) : foo#)
@@ -43,11 +43,11 @@ const main = {
 			g.link = std.alloc()
 			std.put("g={} g.link = {}\n", g, g.link)
 			std.put("h={}, {}\n", h.data, h.len)
-		})
+		}, &a1)
 		std.put("g={} g.link = {}\n", g, g.link)
 
 		a1 = region.init()
-		g# = region.enter(&a1, {
+		g# = region.enter({
 			var h : foo#
 			std.put("this is in a region1, top={}\n", region.top())
 			h = std.alloc()
@@ -55,13 +55,13 @@ const main = {
 			h.link = std.alloc()
 			std.put("h={}, {}\n", h.data, h.len)
 			-> h#
-		})
+		}, &a1)
 
 		var ccc : int# = std.alloc()
 
 		std.put("g={}, {}\n", g#, g.len)
 		-> g.data[0]
-	})
+	}, &a0)
 	std.put("y={}\n", y)
 	std.put("a0={}\n", a0)
 }

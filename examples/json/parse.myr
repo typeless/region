@@ -12,10 +12,10 @@ const main = {
 	//var a : layer.chunk(layer.batch(layer.stats(layer.bigcache(layer.mmap))), byte[32*1024])
 	var a : layer.chunk(layer.batch(layer.stats(layer.bigcache(layer.stats(layer.mmap)))), byte[32*1024])
 	a = region.init()
-	region.enter(&a, {
+	region.enter({
 		strtest()
 		filetest()
-	})
+	}, &a)
 	std.put("{}\n", a)
 }
 

@@ -19,7 +19,7 @@ pkg region =
 		cleanup		: (-> void)
 	;;
 
-	generic enter		: (a : @a#, f : (-> @t) -> @t) :: layer @a
+	generic enter		: (f : (-> @t), a : @a# -> @t) :: layer @a
 	generic escape		: (f : (-> @t) -> @t)
 
 	const bytealloc		: (sz : sys.size -> byte#)
@@ -43,7 +43,7 @@ const next = {
 }
 
 /* TODO Is the return value @t useful in practice? */
-generic enter = {a : @a#, f : (-> @t) -> @t :: layer @a
+generic enter = {f : (-> @t), a : @a# -> @t :: layer @a
 	var y : @t
 	var r : region
 
